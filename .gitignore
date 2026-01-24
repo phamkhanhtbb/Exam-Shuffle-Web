@@ -1,0 +1,14 @@
+# Bỏ qua file cấu hình môi trường (CHỨA MẬT KHẨU/KEY)
+.env
+
+# Bỏ qua thư mục môi trường ảo Python
+.venv/
+venv/
+env/
+
+# Bỏ qua các file cache của Python
+__pycache__/
+*.py[cod]
+
+# Bỏ qua cấu hình của IDE (PyCharm)
+.idea/
