@@ -309,7 +309,7 @@ if __name__ == "__main__":
     NUM_WORKERS = max(2, cpu_count)
 
     processes = []
-    print(f"--- BẮT ĐẦU CHẠY {NUM_WORKERS} WORKER PROCESSES  ---")
+    print(f"--- BAT DAU CHAY {NUM_WORKERS} WORKER PROCESSES  ---")
 
     for i in range(NUM_WORKERS):
         p = multiprocessing.Process(target=run_worker_process, args=(i + 1,))

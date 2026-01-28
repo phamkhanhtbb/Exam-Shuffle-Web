@@ -236,3 +236,398 @@ body {
     width: 100%;
   }
 }
+/* --- Split View Styles --- */
+.split-view-container {
+  display: flex;
+  flex-direction: row; /* Bắt buộc xếp ngang */
+  gap: 20px;
+  height: 600px; /* Chiều cao cố định để scroll */
+  margin-top: 20px;
+  border-top: 2px solid #eee;
+  padding-top: 20px;
+}
+
+.view-pane {
+  flex: 1; /* Chia đều 50-50 */
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: white;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.pane-header {
+  background-color: #f3f4f6;
+  padding: 10px 15px;
+  font-weight: bold;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Phần nội dung cuộn được */
+.pane-content {
+  flex: 1;
+  overflow-y: auto; /* Cho phép scroll dọc */
+  padding: 0;
+}
+
+/* Pane bên phải (Source Code) */
+.source-pane {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+}
+
+.source-editor {
+  width: 100%;
+  height: 100%;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  border: none;
+  padding: 15px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 14px;
+  resize: none;
+  outline: none;
+  white-space: pre; /* Giữ nguyên định dạng dòng */
+}
+/* App.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tùy chỉnh thanh cuộn cho giống IDE */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #a8a8a8;
+}
+
+/* Dark theme scrollbar cho cột phải */
+.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #424242;
+}
+
+.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #4f4f4f;
+}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- GLOBAL LAYOUT --- */
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.5s ease;
+}
+
+/* --- TRẠNG THÁI 1: WELCOME (Nền tím) --- */
+.app-container.mode-welcome {
+  /* Gradient tím giống hình ảnh yêu cầu */
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+}
+
+.welcome-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* --- TRẠNG THÁI 2: WORKSPACE (Nền xám) --- */
+.app-container.mode-workspace {
+  background-color: #f3f4f6;
+}
+
+.app-header {
+  height: 70px;
+  background-color: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  z-index: 50;
+  animation: slideDown 0.4s ease-out;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-action:hover {
+  transform: translateY(-1px);
+}
+
+.btn-action:active {
+  transform: translateY(0);
+}
+
+/* --- ANIMATIONS --- */
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes expandWidth {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.fade-in { animation: fadeInUp 0.6s ease-out; }
+.animate-expand { animation: expandWidth 0.4s ease-out; }
+.animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
+.animate-bounce-in { animation: fadeInUp 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
+
+/* --- SCROLLBAR CUSTOMIZATION --- */
+.custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Dark mode scrollbar */
+.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; }
+.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- GLOBAL LAYOUT --- */
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.5s ease;
+}
+
+.app-container.mode-welcome {
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+}
+.welcome-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.app-container.mode-workspace {
+  background-color: #f3f4f6;
+}
+
+.app-header {
+  height: 70px;
+  background-color: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  z-index: 50;
+  animation: slideDown 0.4s ease-out;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.btn-action:hover { transform: translateY(-1px); }
+.btn-action:active { transform: translateY(0); }
+
+/* --- ANIMATIONS --- */
+@keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes fadeInUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes expandWidth { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+@keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes bounceSmall { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+.fade-in { animation: fadeInUp 0.6s ease-out; }
+.animate-expand { animation: expandWidth 0.4s ease-out; }
+.animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
+.animate-scale-up { animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-bounce-small { animation: bounceSmall 1s infinite; }
+
+/* --- SCROLLBAR --- */
+.custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; }
+.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+.main-content {
+  flex: 1; /* Chiếm toàn bộ không gian còn lại dưới Header */
+  overflow: hidden; /* Quan trọng: Ngăn không cho khung chính tự giãn quá màn hình */
+  display: flex;
+  position: relative;
+  width: 100%;
+}
+
+/* Đảm bảo workspace con cũng full chiều cao */
+.workspace-wrapper {
+  width: 100%;
+  height: 100%;
+}
+/* ... Các phần cũ ... */
+
+/* --- KHẮC PHỤC LỖI FONT PREVIEW --- */
+.preview-paper {
+  /* Font chuẩn đề thi */
+  font-family: "Times New Roman", Times, serif;
+  font-size: 13pt; /* Cỡ chữ chuẩn văn bản hành chính */
+  line-height: 1.5; /* Giãn dòng dễ đọc */
+  color: #000; /* Màu đen tuyệt đối */
+  text-align: justify; /* Căn đều 2 bên */
+}
+
+/* Fix lỗi hiển thị bảng/ảnh trong preview */
+.preview-paper img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 10px auto;
+}
+
+.preview-paper strong {
+  font-weight: bold;
+}
+
+/* --- STYLE CHO THANH RESIZER --- */
+.app-container.resizing {
+  cursor: col-resize; /* Đổi con trỏ khi đang kéo */
+  user-select: none; /* Không cho bôi đen text khi đang kéo */
+}
+
+.workspace-wrapper {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- KHẮC PHỤC LỖI HIỂN THỊ FONT SERIF --- */
+.preview-paper {
+  /* Font chuẩn đề thi */
+  font-family: "Times New Roman", Times, serif;
+  font-size: 13pt; /* Cỡ chữ chuẩn 13 hoặc 14 */
+  line-height: 1.5;
+  color: #000; /* Màu đen tuyệt đối để tăng độ tương phản */
+
+  /* QUAN TRỌNG: Tắt khử răng cưa mờ (antialiased) của Tailwind */
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+
+  /* Tối ưu hiển thị văn bản */
+  text-rendering: optimizeLegibility;
+  text-align: justify; /* Căn đều 2 bên lề */
+
+  /* Reset letter-spacing */
+  letter-spacing: normal;
+}
+
+/* Fix ảnh trong bài thi không bị vỡ layout */
+.preview-paper img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Style cho thanh kéo (Resizer) */
+.resizer-bar {
+  width: 12px;
+  background-color: #f3f4f6;
+  border-left: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  z-index: 50;
+}
+
+.resizer-bar:hover, .resizer-bar.active {
+  background-color: #6366f1; /* Màu tím Indigo khi hover */
+  border-color: #6366f1;
+}
+
+.resizer-handle {
+  width: 4px;
+  height: 30px;
+  background-color: #cbd5e1;
+  border-radius: 2px;
+}
+
+.resizer-bar:hover .resizer-handle {
+  background-color: white;
+}
+
+/* Khi đang kéo, body không cho bôi đen text */
+.app-container.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.app-container.resizing iframe {
+  pointer-events: none; /* Tránh iframe bắt sự kiện chuột */
+}
+
+/* Các class cũ giữ nguyên */
+.app-container { width: 100vw; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+.mode-welcome { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); }
+.mode-workspace { background-color: #f9fafb; }
+.app-header { height: 60px; background: white; border-bottom: 1px solid #e5e7eb; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.main-content { flex: 1; overflow: hidden; display: flex; width: 100%; position: relative; }
+.workspace-wrapper { width: 100%; height: 100%; display: flex; }
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }

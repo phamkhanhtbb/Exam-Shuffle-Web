@@ -20,13 +20,17 @@
   },
   "devDependencies": {
     "@types/uuid": "^9.0.0",
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
     "typescript": "^4.9.5"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "init:tailwind": "tailwindcss init -p"
   },
   "eslintConfig": {
     "extends": [

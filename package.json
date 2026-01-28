@@ -8,6 +8,9 @@
     "dev": "concurrently \"npm:server\" \"npm:worker\" \"npm:frontend\" --names \"API,WORKER,WEB\" --prefix-colors \"blue,magenta,green\""
   },
   "devDependencies": {
-    "concurrently": "^9.0.0"
+    "autoprefixer": "^10.4.23",
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18"
   }
 }

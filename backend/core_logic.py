@@ -1488,12 +1488,29 @@ def generate_variant_from_structure(
                         else:
                             # Trường hợp Rich Text (công thức) chưa có nhãn
                             # Thay vì p.insert_paragraph_before() (GÂY LỖI), ta chèn Run vào đầu
-                            try:
-                                new_run = p.insert_run(0, f"{new_lbl}. ")
-                                new_run.font.bold = True
-                            except Exception:
-                                # Fallback nếu insert_run gặp vấn đề (ít khi xảy ra)
-                                p.add_run(f"{new_lbl}. ").font.bold = True
+                            # try:
+                            #     new_run = p.insert_run(0, f"{new_lbl}. ")
+                            #     new_run.font.bold = True
+                            # except Exception:
+                            #     # Fallback nếu insert_run gặp vấn đề (ít khi xảy ra)
+                            #     p.add_run(f"{new_lbl}. ").font.bold = True
+                            # 1. Tạo phần tử Run (<w:r>)
+                            r = OxmlElement('w:r')
+
+                            # 2. Tạo Properties cho Run (để set in đậm)
+                            rPr = OxmlElement('w:rPr')
+                            b = OxmlElement('w:b')
+                            rPr.append(b)
+                            r.append(rPr)
+
+                            # 3. Tạo phần tử Text (<w:t>)
+                            t = OxmlElement('w:t')
+                            t.set(ns.qn('xml:space'), 'preserve')  # Giữ khoảng trắng
+                            t.text = f"{new_lbl}. "
+                            r.append(t)
+
+                            # 4. Chèn Run mới tạo vào vị trí đầu tiên của Paragraph (<w:p>)
+                            p._element.insert(0, r)
 
                             # Xử lý các đoạn văn còn lại của option (nếu có)
                         for el in opt.elements[1:]:
