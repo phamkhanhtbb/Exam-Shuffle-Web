@@ -41,32 +41,89 @@ function App() {
     setUploadProgress(0);
     setCurrentStatus('Queued');
 
-    try {
-      const job = await ExamShufflingService.processFile(selectedFile, {
+    // try {
+    //   const job = await ExamShufflingService.processFile(selectedFile, {
+    //     numVariants,
+    //     onProgress: (progress: UploadProgress) => {
+    //       setUploadProgress(progress.percentage);
+    //     },
+    //     onStatusChange: (status: JobStatusResponse) => {
+    //       setCurrentStatus(status.Status);
+    //       if (status.Status === 'Done' && status.OutputUrl) {
+    //         setCurrentJob({
+    //           jobId: status.JobId,
+    //           fileKey: '',
+    //           fileName: selectedFile.name,
+    //           status: status.Status,
+    //           createdAt: status.CreatedAt || Date.now(),
+    //           updatedAt: status.UpdatedAt,
+    //           outputUrl: status.OutputUrl,
+    //           outputKey: status.OutputKey,
+    //           numVariants,
+    //         });
+    //       }
+    //     },
+    //   });
+    //
+    //   setCurrentJob(job);
+    //   setCurrentStatus(job.status);
+      try {
+      // BƯỚC 1: Gọi hàm createJob mới
+      // Hàm này thực hiện: Lấy Presigned URL -> Upload lên S3 -> Gửi lệnh Submit
+      const jobId = await ExamShufflingService.createJob(
+        selectedFile,
         numVariants,
-        onProgress: (progress: UploadProgress) => {
+        (progress: UploadProgress) => {
           setUploadProgress(progress.percentage);
-        },
-        onStatusChange: (status: JobStatusResponse) => {
-          setCurrentStatus(status.Status);
-          if (status.Status === 'Done' && status.OutputUrl) {
-            setCurrentJob({
-              jobId: status.JobId,
-              fileKey: '',
-              fileName: selectedFile.name,
-              status: status.Status,
-              createdAt: status.CreatedAt || Date.now(),
-              updatedAt: status.UpdatedAt,
-              outputUrl: status.OutputUrl,
-              outputKey: status.OutputKey,
-              numVariants,
-            });
-          }
-        },
-      });
+        }
+      );
 
-      setCurrentJob(job);
-      setCurrentStatus(job.status);
+      // BƯỚC 2: Khởi tạo thông tin Job để hiển thị ngay lập tức
+      const initialJob: UploadJob = {
+        jobId: jobId,
+        fileKey: '', // Frontend không cần quan tâm key này nữa
+        fileName: selectedFile.name,
+        status: 'Queued',
+        createdAt: Date.now(),
+        numVariants: numVariants,
+      };
+
+      setCurrentJob(initialJob);
+      setCurrentStatus('Queued');
+
+      // BƯỚC 3: Tự thực hiện Polling (Vòng lặp kiểm tra trạng thái)
+      // Vì hàm createJob trả về ngay sau khi upload xong, ta phải tự chờ Backend xử lý
+      let isJobFinished = false;
+
+      while (!isJobFinished) {
+        // Nghỉ 2 giây giữa các lần kiểm tra
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        // Gọi API lấy trạng thái mới nhất
+        const statusData: JobStatusResponse = await ExamShufflingService.getJobStatus(jobId);
+
+        // Cập nhật trạng thái vào State
+        setCurrentStatus(statusData.Status);
+
+        // Cập nhật thông tin Job (nếu có OutputUrl thì React sẽ hiện nút Download)
+        setCurrentJob((prevJob) => {
+            if (!prevJob) return null;
+            return {
+                ...prevJob,
+                status: statusData.Status,
+                updatedAt: statusData.UpdatedAt,
+                outputUrl: statusData.OutputUrl,
+                outputKey: statusData.OutputKey
+            };
+        });
+
+        // Kiểm tra điều kiện thoát vòng lặp
+        if (statusData.Status === 'Done' || statusData.Status === 'Failed') {
+          isJobFinished = true;
+        }
+      }
+
+      // Khi vòng lặp kết thúc, code sẽ chạy xuống finally để set setIsProcessing(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Có lỗi xảy ra');
       setCurrentStatus('Failed');

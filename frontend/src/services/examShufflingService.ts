@@ -90,138 +90,195 @@
 //     return DynamoDBService.getJobStatus(jobId);
 //   }
 // }
-import { UploadJob, JobStatusResponse, UploadProgress } from '../types';
+// import { UploadJob, JobStatusResponse, UploadProgress } from '../types';
+// // Cấu hình đường dẫn API (Trỏ về server.py đang chạy)
+// const API_URL = 'http://localhost:5000/api';
+//
+// export interface UploadOptions {
+//   numVariants: number;
+//   onProgress?: (progress: UploadProgress) => void; // Lưu ý: Fetch API mặc định khó track upload progress chi tiết như Axios, nên tạm thời có thể bỏ qua hoặc dùng XMLHttpRequest nếu cần.
+//   onStatusChange?: (status: JobStatusResponse) => void;
+// }
+//
+// export class ExamShufflingService {
+//
+//   /**
+//    * Quy trình mới: Upload file lên Python Server -> Nhận JobID -> Polling API Status
+//    */
+//   static async processFile(
+//     file: File,
+//     options: UploadOptions
+//   ): Promise<UploadJob> {
+//     const { numVariants, onStatusChange } = options;
+//
+//     // 1. Validate sơ bộ (Backend sẽ check kỹ hơn)
+//     const validExtensions = ['.docx', '.doc'];
+//     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+//     if (!validExtensions.includes(fileExtension)) {
+//       throw new Error('Chỉ chấp nhận file .docx hoặc .doc');
+//     }
+//
+//     try {
+//       // 2. Gọi API Upload (POST /api/upload)
+//       console.log('📤 Step 1/3: Uploading file to Backend...');
+//       const formData = new FormData();
+//       formData.append('file', file);
+//       formData.append('numVariants', numVariants.toString());
+//
+//       const uploadRes = await fetch(`${API_URL}/upload`, {
+//         method: 'POST',
+//         body: formData,
+//       });
+//
+//       if (!uploadRes.ok) {
+//         const errorData = await uploadRes.json();
+//         throw new Error(errorData.error || 'Upload failed');
+//       }
+//
+//       const { JobId } = await uploadRes.json();
+//       console.log(`🚀 Job started: ${JobId}`);
+//
+//       // 3. Bắt đầu Polling (Hỏi trạng thái liên tục)
+//       console.log('⏳ Step 2/3: Polling status from Backend...');
+//
+//       const finalStatus = await this.pollJobStatus(JobId, (status) => {
+//         console.log(`📊 Job status: ${status.Status}`);
+//         if (onStatusChange) {
+//           onStatusChange(status);
+//         }
+//       });
+//
+//       // 4. Trả về kết quả hoàn tất
+//       const job: UploadJob = {
+//         jobId: JobId,
+//         fileKey: '', // Frontend không cần biết key S3 nữa
+//         fileName: file.name,
+//         status: finalStatus.Status,
+//         createdAt: finalStatus.CreatedAt || Date.now(),
+//         updatedAt: finalStatus.UpdatedAt,
+//         outputUrl: finalStatus.OutputUrl,
+//         outputKey: finalStatus.OutputKey,
+//         lastError: finalStatus.LastError,
+//         numVariants,
+//       };
+//
+//       console.log(`✅ Job completed: ${JobId}`);
+//       return job;
+//
+//     } catch (error) {
+//       console.error(`❌ Process failed:`, error);
+//       throw error;
+//     }
+//   }
+//
+//   /**
+//    * Hàm Polling riêng biệt gọi API GET /api/status/<id>
+//    */
+//   private static async pollJobStatus(
+//     jobId: string,
+//     onStatus: (status: JobStatusResponse) => void,
+//     maxAttempts = 60,
+//     intervalMs = 3000
+//   ): Promise<JobStatusResponse> {
+//
+//     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+//       // Gọi API lấy trạng thái
+//       const res = await fetch(`${API_URL}/status/${jobId}`);
+//
+//       if (!res.ok) {
+//          // Nếu lỗi mạng tạm thời thì bỏ qua, chờ lần sau
+//          console.warn(`Polling attempt ${attempt} failed`);
+//       } else {
+//         const statusData: JobStatusResponse = await res.json();
+//
+//         // Bắn callback ra ngoài UI cập nhật
+//         onStatus(statusData);
+//
+//         // Kiểm tra điều kiện dừng
+//         if (statusData.Status === 'Done') {
+//           return statusData;
+//         }
+//
+//         if (statusData.Status === 'Failed') {
+//           throw new Error(statusData.LastError || 'Job processing failed on server');
+//         }
+//       }
+//
+//       // Chờ một chút trước khi hỏi tiếp (Delay)
+//       await new Promise(resolve => setTimeout(resolve, intervalMs));
+//     }
+//
+//     throw new Error('Polling timeout: Server xử lý quá lâu.');
+//   }
+//
+//   /**
+//    * Lấy trạng thái lẻ (nếu cần dùng ở chỗ khác)
+//    */
+//   static async getJobStatus(jobId: string): Promise<JobStatusResponse | null> {
+//     try {
+//       const res = await fetch(`${API_URL}/status/${jobId}`);
+//       if (res.ok) return await res.json();
+//       return null;
+//     } catch {
+//       return null;
+//     }
+//   }
+// }
+// Cập nhật API Endpoint (Đảm bảo trỏ đúng port server backend local của bạn)
+import { S3Service } from './s3Service';
+import { UploadProgress } from '../types';
 
-// Cấu hình đường dẫn API (Trỏ về server.py đang chạy)
-const API_URL = 'http://localhost:5000/api';
-
-export interface UploadOptions {
-  numVariants: number;
-  onProgress?: (progress: UploadProgress) => void; // Lưu ý: Fetch API mặc định khó track upload progress chi tiết như Axios, nên tạm thời có thể bỏ qua hoặc dùng XMLHttpRequest nếu cần.
-  onStatusChange?: (status: JobStatusResponse) => void;
-}
+const API_BASE_URL = 'http://localhost:5000/api';
 
 export class ExamShufflingService {
 
-  /**
-   * Quy trình mới: Upload file lên Python Server -> Nhận JobID -> Polling API Status
-   */
-  static async processFile(
+  static async createJob(
     file: File,
-    options: UploadOptions
-  ): Promise<UploadJob> {
-    const { numVariants, onStatusChange } = options;
-
-    // 1. Validate sơ bộ (Backend sẽ check kỹ hơn)
-    const validExtensions = ['.docx', '.doc'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    if (!validExtensions.includes(fileExtension)) {
-      throw new Error('Chỉ chấp nhận file .docx hoặc .doc');
-    }
-
+    numVariants: number,
+    onUploadProgress?: (progress: UploadProgress) => void
+  ): Promise<string> {
     try {
-      // 2. Gọi API Upload (POST /api/upload)
-      console.log('📤 Step 1/3: Uploading file to Backend...');
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('numVariants', numVariants.toString());
-
-      const uploadRes = await fetch(`${API_URL}/upload`, {
+      // BƯỚC 1: Xin Presigned URL từ Backend
+      console.log('1. Requesting upload URL...');
+      const urlResponse = await fetch(`${API_BASE_URL}/get-upload-url`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            fileName: file.name,
+            fileType: file.type
+        }),
       });
 
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json();
-        throw new Error(errorData.error || 'Upload failed');
-      }
+      if (!urlResponse.ok) throw new Error('Failed to get upload URL');
+      const { jobId, uploadUrl, fileKey } = await urlResponse.json();
 
-      const { JobId } = await uploadRes.json();
-      console.log(`🚀 Job started: ${JobId}`);
+      // BƯỚC 2: Upload file lên S3 dùng URL vừa xin được
+      console.log('2. Uploading to S3...');
+      await S3Service.uploadWithPresignedUrl(file, uploadUrl, onUploadProgress);
 
-      // 3. Bắt đầu Polling (Hỏi trạng thái liên tục)
-      console.log('⏳ Step 2/3: Polling status from Backend...');
-
-      const finalStatus = await this.pollJobStatus(JobId, (status) => {
-        console.log(`📊 Job status: ${status.Status}`);
-        if (onStatusChange) {
-          onStatusChange(status);
-        }
+      // BƯỚC 3: Báo cho Backend biết đã upload xong để đẩy vào Queue
+      console.log('3. Submitting job...');
+      const submitResponse = await fetch(`${API_BASE_URL}/submit-job`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, fileKey, numVariants }),
       });
 
-      // 4. Trả về kết quả hoàn tất
-      const job: UploadJob = {
-        jobId: JobId,
-        fileKey: '', // Frontend không cần biết key S3 nữa
-        fileName: file.name,
-        status: finalStatus.Status,
-        createdAt: finalStatus.CreatedAt || Date.now(),
-        updatedAt: finalStatus.UpdatedAt,
-        outputUrl: finalStatus.OutputUrl,
-        outputKey: finalStatus.OutputKey,
-        lastError: finalStatus.LastError,
-        numVariants,
-      };
+      if (!submitResponse.ok) throw new Error('Failed to submit job');
 
-      console.log(`✅ Job completed: ${JobId}`);
-      return job;
-
+      return jobId;
     } catch (error) {
-      console.error(`❌ Process failed:`, error);
+      console.error('Job creation failed:', error);
       throw error;
     }
   }
 
-  /**
-   * Hàm Polling riêng biệt gọi API GET /api/status/<id>
-   */
-  private static async pollJobStatus(
-    jobId: string,
-    onStatus: (status: JobStatusResponse) => void,
-    maxAttempts = 60,
-    intervalMs = 3000
-  ): Promise<JobStatusResponse> {
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      // Gọi API lấy trạng thái
-      const res = await fetch(`${API_URL}/status/${jobId}`);
-
-      if (!res.ok) {
-         // Nếu lỗi mạng tạm thời thì bỏ qua, chờ lần sau
-         console.warn(`Polling attempt ${attempt} failed`);
-      } else {
-        const statusData: JobStatusResponse = await res.json();
-
-        // Bắn callback ra ngoài UI cập nhật
-        onStatus(statusData);
-
-        // Kiểm tra điều kiện dừng
-        if (statusData.Status === 'Done') {
-          return statusData;
+  // ... (Giữ nguyên logic getJobStatus cũ)
+    static async getJobStatus(jobId: string) {
+        const response = await fetch(`${API_BASE_URL}/status/${jobId}`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch status');
         }
-
-        if (statusData.Status === 'Failed') {
-          throw new Error(statusData.LastError || 'Job processing failed on server');
-        }
-      }
-
-      // Chờ một chút trước khi hỏi tiếp (Delay)
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
+        return response.json();
     }
-
-    throw new Error('Polling timeout: Server xử lý quá lâu.');
-  }
-
-  /**
-   * Lấy trạng thái lẻ (nếu cần dùng ở chỗ khác)
-   */
-  static async getJobStatus(jobId: string): Promise<JobStatusResponse | null> {
-    try {
-      const res = await fetch(`${API_URL}/status/${jobId}`);
-      if (res.ok) return await res.json();
-      return null;
-    } catch {
-      return null;
-    }
-  }
 }
