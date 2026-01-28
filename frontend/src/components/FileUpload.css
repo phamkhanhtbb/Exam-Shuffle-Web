@@ -1,0 +1,124 @@
+.file-upload-container {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.upload-area {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  background-color: #f8fafc;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.upload-area:hover:not(.disabled) {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.upload-area.dragging {
+  border-color: #3b82f6;
+  background-color: #dbeafe;
+  transform: scale(1.02);
+}
+
+.upload-area.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #f1f5f9;
+}
+
+.upload-icon {
+  color: #64748b;
+  margin: 0 auto 16px;
+}
+
+.upload-area h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.upload-area p {
+  margin: 8px 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.browse-button {
+  margin: 16px 0 8px 0;
+  padding: 10px 24px;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.browse-button:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+.browse-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.file-hint {
+  font-size: 12px !important;
+  color: #94a3b8 !important;
+}
+
+.selected-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-icon {
+  color: #3b82f6;
+}
+
+.file-details h4 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.file-details p {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.remove-button {
+  padding: 6px;
+  background-color: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.remove-button:hover {
+  background-color: #fee2e2;
+  color: #dc2626;
+}

@@ -1,14 +1,23 @@
-# Bỏ qua file cấu hình môi trường (CHỨA MẬT KHẨU/KEY)
+# --- BACKEND (Python) ---
 .env
-
-# Bỏ qua thư mục môi trường ảo Python
+backend/.env
 .venv/
 venv/
 env/
-
-# Bỏ qua các file cache của Python
+backend/.venv/
+backend/venv/
 __pycache__/
 *.py[cod]
 
-# Bỏ qua cấu hình của IDE (PyCharm)
+# --- FRONTEND (React) ---
+node_modules/
+frontend/node_modules/
+dist/
+build/
+frontend/dist/
+frontend/build/
+.DS_Store
+
+# --- IDE ---
 .idea/
+.vscode/
