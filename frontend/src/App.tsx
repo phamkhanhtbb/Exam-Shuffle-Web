@@ -121,7 +121,19 @@
 // // //   };
 // // //
 // // //   return (
-// // //     <
+// // //     <div className="app">
+//              <div className="container">
+//                  <header className="header">
+//                  <h1>🎓 ExamShuffling</h1>
+//                  <p>Hệ thống tự động tạo đề thi trắc nghiệm</p>
+//               </header>
+//
+//         <div className="main-content">
+//           <form onSubmit={handleSubmit} className="upload-form">
+//             <FileUpload
+//               onFileSelect={handleFileSelect}
+//               disabled={isProcessing}
+//             />
 // // //
 // // //             <div className="form-group">
 // // //               <label htmlFor="numVariants">Số lượng đề thi cần tạo:</label>
@@ -1278,10 +1290,10 @@ function App() {
             // </div>
             <div className="welcome-wrapper fade-in">
                 <div className="flex flex-col items-center gap-2 mb-8 animate-fade-in-up">
-                    <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/30 shadow-inner mb-2">
-                        <Settings size={32} className="text-white drop-shadow-md" strokeWidth={2.5}/>
-                    </div>
-                    <h1 className="text-3xl font-bold text-white tracking-wide">ExamShuffling</h1>
+                    {/*<div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/30 shadow-inner mb-2">*/}
+                    {/*    <Settings size={32} className="text-white drop-shadow-md" strokeWidth={2.5}/>*/}
+                    {/*</div>*/}
+                    <h1 className="text-3xl font-bold text-white tracking-wide">🎓 ExamShuffling</h1>
                     <p className="text-indigo-100 text-sm font-light opacity-90">Hệ thống tự động trộn đề thi trắc nghiệm</p>
                 </div>
 
@@ -1336,7 +1348,7 @@ function App() {
         //         <div
         //             className="w-1.5 bg-gray-300 hover:bg-indigo-500 cursor-col-resize flex items-center justify-center transition-colors z-50 hover:shadow-lg active:bg-indigo-600"
         //             onMouseDown={startResizing}
-        //         >
+        //          >
         //             <GripVertical size={12} className="text-gray-400" />
         //         </div>
         //         <div className="w-[40%] flex flex-col bg-[#1e1e1e] border-l border-gray-700 min-w-0 shadow-2xl z-20">
