@@ -2,19 +2,49 @@ import os
 import uuid
 import json
 import time
+import logging
+import io
 import boto3
 from docx import Document
-import io
-from docx_serializer import DocxSerializer
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 from decimal import Decimal
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from docx_serializer import DocxSerializer
 from config import settings
+from schemas import (
+    UploadUrlRequest, UploadUrlResponse,
+    SubmitJobRequest, SubmitJobResponse,
+    JobStatusResponse, PreviewResponse, PreviewData
+)
 
-app = Flask(__name__)
-CORS(app)
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger("server")
 
-# --- KHỞI TẠO AWS ---
+# --- FASTAPI APP ---
+app = FastAPI(
+    title="ExamShuffling API",
+    description="API for exam shuffling and processing",
+    version="2.0.0"
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- AWS CLIENTS ---
 session = boto3.Session(
     aws_access_key_id=settings.aws_access_key_id,
     aws_secret_access_key=settings.aws_secret_access_key,
@@ -27,83 +57,68 @@ table = dynamodb.Table(settings.table_name)
 
 
 # --- 1. API CẤP LINK UPLOAD (Presigned URL) ---
-@app.route('/api/get-upload-url', methods=['POST'])
-def get_upload_url():
-    data = request.get_json()
-    filename = data.get('fileName', 'unknown.docx')
-    file_type = data.get('fileType', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-
+@app.post("/api/get-upload-url", response_model=UploadUrlResponse)
+async def get_upload_url(request: UploadUrlRequest):
     job_id = str(uuid.uuid4())
-    # Clean tên file và tạo key
-    safe_name = "".join([c for c in filename if c.isalnum() or c in "._- "])
+    safe_name = "".join([c for c in request.fileName if c.isalnum() or c in "._- "])
     s3_key = f"uploads/{job_id}/{safe_name}"
 
     try:
-        # Tạo Presigned URL (cho phép Client PUT file lên S3 trong 5 phút)
         presigned_url = s3.generate_presigned_url(
             'put_object',
             Params={
                 'Bucket': settings.bucket_input,
                 'Key': s3_key,
-                'ContentType': file_type
+                'ContentType': request.fileType
             },
-            ExpiresIn=300  # 5 phút
+            ExpiresIn=300
         )
 
-        # Lưu trạng thái 'Pending Upload' vào DynamoDB
         timestamp = int(time.time())
         table.put_item(
             Item={
                 'JobId': job_id,
                 'Status': 'PendingUpload',
-                'FileName': filename,
+                'FileName': request.fileName,
                 'CreatedAt': timestamp,
                 'UpdatedAt': timestamp
             }
         )
 
-        return jsonify({
-            'jobId': job_id,
-            'uploadUrl': presigned_url,
-            'fileKey': s3_key
-        })
+        return UploadUrlResponse(
+            jobId=job_id,
+            uploadUrl=presigned_url,
+            fileKey=s3_key
+        )
 
     except Exception as e:
-        print(f"Error generating URL: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error generating URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- 2. API KÍCH HOẠT XỬ LÝ (Sau khi FE upload xong) ---
-@app.route('/api/submit-job', methods=['POST'])
-def submit_job():
-    data = request.get_json()
-    job_id = data.get('jobId')
-    file_key = data.get('fileKey')
-    num_variants = data.get('numVariants', 10)
-
-    if not job_id or not file_key:
-        return jsonify({'error': 'Missing jobId or fileKey'}), 400
+# --- 2. API KÍCH HOẠT XỬ LÝ ---
+@app.post("/api/submit-job", response_model=SubmitJobResponse)
+async def submit_job(request: SubmitJobRequest):
+    if not request.jobId or not request.fileKey:
+        raise HTTPException(status_code=400, detail="Missing jobId or fileKey")
 
     try:
-        # Update trạng thái sang 'Queued'
         timestamp = int(time.time())
         table.update_item(
-            Key={'JobId': job_id},
+            Key={'JobId': request.jobId},
             UpdateExpression="SET #s = :status, NumVariants = :num, UpdatedAt = :ts",
             ExpressionAttributeNames={'#s': 'Status'},
             ExpressionAttributeValues={
                 ':status': 'Queued',
-                ':num': int(num_variants),
+                ':num': request.numVariants,
                 ':ts': timestamp
             }
         )
 
-        # Gửi tin nhắn cho Worker qua SQS
-        # (Chuyển logic gửi SQS từ Frontend về đây -> Bảo mật hơn)
         message_body = {
-            "jobId": job_id,
-            "fileKey": file_key,
-            "numVariants": int(num_variants),
+            "jobId": request.jobId,
+            "fileKey": request.fileKey,
+            "numVariants": request.numVariants,
             "status": "Queued"
         }
         sqs.send_message(
@@ -111,83 +126,73 @@ def submit_job():
             MessageBody=json.dumps(message_body)
         )
 
-        return jsonify({'message': 'Job submitted successfully', 'jobId': job_id})
+        return SubmitJobResponse(
+            message="Job submitted successfully",
+            jobId=request.jobId
+        )
 
     except Exception as e:
-        print(f"Error submitting job: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error submitting job: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- 3. API POLLING TRẠNG THÁI (Giữ nguyên logic cũ) ---
-@app.route('/api/status/<job_id>', methods=['GET'])
-def get_status(job_id):
+# --- 3. API POLLING TRẠNG THÁI ---
+@app.get("/api/status/{job_id}", response_model=JobStatusResponse)
+async def get_status(job_id: str):
     try:
         response = table.get_item(Key={'JobId': job_id})
-        if 'Item' in response:
-            item = response['Item']
+        if 'Item' not in response:
+            raise HTTPException(status_code=404, detail="Job not found")
 
-            # Convert Decimal
-            def decimal_default(obj):
-                if isinstance(obj, Decimal):
-                    return int(obj) if obj % 1 == 0 else float(obj)
-                return obj
+        item = response['Item']
 
-            # Xử lý trường hợp chưa có OutputUrl
-            result = {
-                'JobId': item.get('JobId'),
-                'Status': item.get('Status'),
-                'OutputUrl': item.get('OutputUrl', None),
-                'CreatedAt': decimal_default(item.get('CreatedAt', 0)),
-                'UpdatedAt': decimal_default(item.get('UpdatedAt', 0))
-            }
-            return jsonify(result)
-        else:
-            return jsonify({'error': 'Job not found'}), 404
+        def decimal_convert(obj):
+            if isinstance(obj, Decimal):
+                return int(obj) if obj % 1 == 0 else float(obj)
+            return obj
+
+        return JobStatusResponse(
+            JobId=item.get('JobId'),
+            Status=item.get('Status'),
+            OutputUrl=item.get('OutputUrl'),
+            CreatedAt=decimal_convert(item.get('CreatedAt', 0)),
+            UpdatedAt=decimal_convert(item.get('UpdatedAt', 0))
+        )
+
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- API PREVIEW (Xử lý trên RAM, không lưu S3) ---
-@app.route('/api/preview', methods=['POST'])
-def preview_exam():
-    """
-    API này nhận file docx, parse ra text + assets map để hiển thị Split-View.
-    Không lưu file vào S3/Disk để tối ưu tốc độ.
-    """
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+# --- 4. API PREVIEW ---
+@app.post("/api/preview", response_model=PreviewResponse)
+async def preview_exam(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No selected file")
 
     try:
-        # 1. Đọc file vào bộ nhớ RAM (BytesIO)
-        # file.read() trả về bytes, ta bọc vào BytesIO để python-docx đọc được
-        file_stream = io.BytesIO(file.read())
-
-        # 2. Tạo đối tượng Document từ stream
+        contents = await file.read()
+        file_stream = io.BytesIO(contents)
         doc = Document(file_stream)
 
-        # 3. Gọi Serializer để xử lý
         serializer = DocxSerializer(doc)
         result = serializer.serialize()
 
-        # result sẽ có dạng:
-        # {
-        #   "raw_text": "[!b:Câu 1.] ...",
-        #   "assets_map": { "img_1": { "src": "data:image/...", ... } }
-        # }
-
-        # 4. Trả kết quả JSON về cho Frontend
-        return jsonify({
-            'status': 'success',
-            'data': result
-        })
+        return PreviewResponse(
+            status="success",
+            data=PreviewData(
+                raw_text=result["raw_text"],
+                assets_map=result["assets_map"]
+            )
+        )
 
     except Exception as e:
-        # Log lỗi ra console để debug
-        print(f"❌ Preview Error: {str(e)}")
-        return jsonify({'error': f"Lỗi xử lý file: {str(e)}"}), 500
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+        logger.error(f"Preview Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi xử lý file: {str(e)}")
+
+
+# --- MAIN ---
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5000)

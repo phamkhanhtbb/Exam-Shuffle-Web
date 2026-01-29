@@ -2,7 +2,7 @@
   "name": "pythonproject1",
   "version": "1.0.0",
   "scripts": {
-    "server": "cd backend && python server.py",
+    "server": "cd backend && python -m uvicorn server:app --reload --host 0.0.0.0 --port 5000",
     "worker": "cd backend && set PYTHONIOENCODING=utf-8 && python worker.py",
     "frontend": "cd frontend && npm start",
     "dev": "concurrently \"npm:server\" \"npm:worker\" \"npm:frontend\" --names \"API,WORKER,WEB\" --prefix-colors \"blue,magenta,green\""

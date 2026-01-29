@@ -8,10 +8,11 @@
     "@aws-sdk/client-sqs": "^3.700.0",
     "@aws-sdk/lib-dynamodb": "^3.700.0",
     "@aws-sdk/s3-request-presigner": "^3.700.0",
+    "@tanstack/react-query": "^5.90.20",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "axios": "^1.6.0",
+    "axios": "^1.13.4",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -19,6 +20,7 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.28.0",
     "@types/uuid": "^9.0.0",
     "autoprefixer": "^10.4.23",
     "postcss": "^8.5.6",
@@ -30,7 +32,8 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "init:tailwind": "tailwindcss init -p"
+    "init:tailwind": "tailwindcss init -p",
+    "generate:api": "openapi-generator-cli generate -i http://localhost:5000/openapi.json -g typescript-axios -o src/api/generated --additional-properties=supportsES6=true,withSeparateModelsAndApi=true,apiPackage=api,modelPackage=models"
   },
   "eslintConfig": {
     "extends": [

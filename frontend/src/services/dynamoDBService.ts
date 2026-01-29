@@ -1,6 +1,8 @@
 import { PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, AWS_CONFIG } from '../config/aws';
-import { JobStatus, JobStatusResponse } from '../types';
+import { JobStatusResponse } from '../api/types';
+
+type JobStatus = 'PendingUpload' | 'Queued' | 'Processing' | 'Done' | 'Failed';
 
 export class DynamoDBService {
   /**

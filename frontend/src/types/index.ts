@@ -1,30 +1,19 @@
+// Re-export API types
+export type { JobStatusResponse, UploadProgress } from '../api/types';
+
+// Status type for internal use
+export type JobStatus = 'PendingUpload' | 'Queued' | 'Processing' | 'Done' | 'Failed';
+
+// Local types
 export interface UploadJob {
   jobId: string;
   fileKey: string;
   fileName: string;
-  status: JobStatus;
+  status: 'PendingUpload' | 'Queued' | 'Processing' | 'Done' | 'Failed';
   createdAt: number;
   updatedAt?: number;
   outputUrl?: string;
   outputKey?: string;
   lastError?: string;
   numVariants: number;
-}
-
-export type JobStatus = 'Queued' | 'Processing' | 'Done' | 'Failed';
-
-export interface JobStatusResponse {
-  JobId: string;
-  Status: JobStatus;
-  OutputUrl?: string;
-  OutputKey?: string;
-  LastError?: string;
-  UpdatedAt?: number;
-  CreatedAt?: number;
-}
-
-export interface UploadProgress {
-  loaded: number;
-  total: number;
-  percentage: number;
 }
