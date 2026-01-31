@@ -6,14 +6,31 @@ interface PreviewPanelProps {
     width: number;
     isLoading: boolean;
     previewData: { raw_text: string; assets_map: AssetMap } | null;
+    correctAnswers?: Map<number, string>;
+    onAnswerSelect?: (questionIndex: number, answer: string) => void;
+    trueFalseAnswers?: Map<string, boolean>;
+    onTrueFalseToggle?: (questionIndex: number, letter: string) => void;
+    onShortAnswerChange?: (questionIndex: number, text: string) => void;
+    onLineClick?: (lineNumber: number) => void;
 }
 
-const PreviewPanel: React.FC<PreviewPanelProps> = ({ width, isLoading, previewData }) => {
+const PreviewPanel: React.FC<PreviewPanelProps> = ({
+    width,
+    isLoading,
+    previewData,
+    correctAnswers,
+    onAnswerSelect,
+    trueFalseAnswers,
+    onTrueFalseToggle,
+    onShortAnswerChange,
+    onLineClick
+}) => {
     return (
         <div
             className="flex flex-col border-r border-gray-200 bg-gray-50/50 min-w-0 transition-none"
             style={{ width: `${width}%` }}
         >
+            {/* Header ... */}
             <div className="h-10 border-b border-gray-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-10">
                 <span className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
                     <FileText size={14} /> Giao diện Đề thi
@@ -31,7 +48,16 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ width, isLoading, previewDa
                 )}
                 {previewData && (
                     <div className="max-w-[21cm] mx-auto bg-white min-h-[29.7cm] shadow-lg border border-gray-200 p-10 transition-all origin-top animate-fade-in-up preview-paper">
-                        <PreviewRenderer rawText={previewData.raw_text} assetsMap={previewData.assets_map} />
+                        <PreviewRenderer
+                            rawText={previewData.raw_text}
+                            assetsMap={previewData.assets_map}
+                            correctAnswers={correctAnswers}
+                            onAnswerSelect={onAnswerSelect}
+                            trueFalseAnswers={trueFalseAnswers}
+                            onTrueFalseToggle={onTrueFalseToggle}
+                            onShortAnswerChange={onShortAnswerChange}
+                            onLineClick={onLineClick}
+                        />
                     </div>
                 )}
             </div>
@@ -40,3 +66,4 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ width, isLoading, previewDa
 };
 
 export default PreviewPanel;
+
