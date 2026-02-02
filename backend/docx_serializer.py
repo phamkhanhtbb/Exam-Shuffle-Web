@@ -1,11 +1,14 @@
 import base64
 import re
+from lxml import etree
 from docx.document import Document
 from docx.oxml.text.paragraph import CT_P
 from docx.oxml.table import CT_Tbl
 from docx.table import Table
 from docx.text.paragraph import Paragraph
-from docx.oxml.shape import CT_BlipFillProperties
+
+from core.image_processor import ImageProcessor
+from core.math_processor import MathProcessor
 
 # Namespace cho việc tìm kiếm XML
 nsmap = {
@@ -23,13 +26,17 @@ class DocxSerializer:
         self.assets = {}
         self.img_count = 0
         self.math_count = 0
+        
+        # Initialize processors
+        self.image_processor = ImageProcessor()
+        self.math_processor = MathProcessor(nsmap)
 
         # --- CẤU HÌNH REGEX LOẠI TRỪ IN ĐẬM ---
         # 1. Label câu hỏi: "Câu 1", "Câu 1.", "Bài 1:", "Câu 10" (case insensitive)
         # 2. Label đáp án: "A.", "B)", "c.", "d:" (ký tự đơn + dấu chấm/ngoặc/hai chấm)
         self.ignore_bold_pattern = re.compile(
             r"^\s*(?:Câu|Bài|Phần)\s+\d+[\.:]*\s*$|"  # Matches: Câu 1, Câu 1., Bài 2:
-            r"^\s*[A-Da-d][\.\):]?\s*$",  # Matches: A., B), c:, d.
+            r"^\s*[A-Da-d][\.\\):]?\s*$",  # Matches: A., B), c:, d.
             re.IGNORECASE
         )
 
@@ -63,25 +70,56 @@ class DocxSerializer:
                     if img_bytes:
                         self.img_count += 1
                         img_id = f"img_{self.img_count}"
-                        b64_str = base64.b64encode(img_bytes).decode('utf-8')
+                        
+                        # Use ImageProcessor to convert if needed (though usually drawing blips are standard)
+                        # But standard drawing blips are usually PNG/JPEG/etc.
+                        # We just encode them.
+                        # Wait, original code was just b64encode for drawing images.
+                        # Logic: "if img_bytes: ... b64encode(img_bytes)"
+                        # Let's keep it simple or use ImageProcessor for consistency?
+                        # Original code:
+                        # b64_str = base64.b64encode(img_bytes).decode('utf-8')
+                        # self.assets[img_id] = {"type": "image", "src": f"data:image/png;base64,{b64_str}"}
+                        # Problem: if it's not PNG? 
+                        # Let's use ImageProcessor to be safe and consistent
+                        src = self.image_processor.convert_image_to_png(img_bytes, img_id)
+                        
                         self.assets[img_id] = {
                             "type": "image",
-                            "src": f"data:image/png;base64,{b64_str}"
+                            "src": src
                         }
                         return f"[img:${img_id}$]"
 
         # 2. Xử lý MATH
+        # Delegate to MathProcessor
         if "m:oMath" in xml_str or "w:object" in xml_str:
             self.math_count += 1
             math_id = f"mathtype_{self.math_count}"
+            
+            latex_str = self.math_processor.extract_latex_from_run(run._element)
+            img_src = None
+            
+            # If no latex found or fallback needed, check for OLE Object Image
+            if not latex_str:
+                objects = run._element.findall('.//w:object', namespaces=nsmap)
+                for obj in objects:
+                     res = self.math_processor.extract_ole_image_bytes(obj, self._get_image_data)
+                     if res:
+                         img_bytes, rId = res
+                         img_src = self.image_processor.convert_image_to_png(img_bytes, math_id)
+                         if img_src:
+                             print(f"[DEBUG] Extracted and converted image for {math_id}")
+                         break
+            
             self.assets[math_id] = {
                 "type": "math",
-                "latex": text,
+                "latex": latex_str,
+                "src": img_src,  # Fallback image for MathType
                 "placeholder": "[Công thức]"
             }
             return f"[!m:${math_id}$]"
 
-        # 3. Xử lý BOLD
+        # 4. Xử lý BOLD
         # Chỉ đánh dấu, việc check label sẽ làm ở bước _process_paragraph (gộp string)
         if run.bold and text.strip():
             return f"[!b:{text}]"
@@ -112,11 +150,101 @@ class DocxSerializer:
 
         return pattern.sub(replacer, text)
 
+    def _process_inline_latex_text(self, text):
+        """
+        Process inline LaTeX ($...$) in full paragraph text.
+        Handles masking of existing [!m:...] tags.
+        """
+        if '$' not in text:
+            return text
+            
+        import re
+        # 1. Mask existing math assets
+        existing_tags = []
+        def mask_tag(match):
+            tag = match.group(0)
+            existing_tags.append(tag)
+            return f"__MATH_TAG_{len(existing_tags)-1}__"
+            
+        try:
+            # Mask [!m:...] AND [img:...] tags to protect them from regex replacement
+            # Image tags format: [img:$id$]
+            # Math tags format: [!m:$id$]
+            temp_text = re.sub(r'(\[!m:[^\]]+\$\]|\[img:\$[^\]]+\$\])', mask_tag, text)
+            
+            # 2. Process inline latex $...$
+            def replace_latex(match):
+                latex_content = match.group(1)
+                # Avoid empty matches or whitespace only if undesired
+                if not latex_content.strip():
+                    return match.group(0)
+                
+                self.math_count += 1
+                math_id = f"mathtype_{self.math_count}"
+                
+                self.assets[math_id] = {
+                    "type": "math",
+                    "latex": latex_content,
+                    "src": None,
+                    "placeholder": "[Công thức]"
+                }
+                return f"[!m:${math_id}$]"
+
+            # Regex: $...$
+            # Support escaped \$? For now basic non-greedy
+            temp_text = re.sub(r'\$([^\$]+)\$', replace_latex, temp_text)
+            
+            # 3. Restore masked tags
+            for i, tag in enumerate(existing_tags):
+                temp_text = temp_text.replace(f"__MATH_TAG_{i}__", tag)
+                
+            return temp_text
+            
+        except Exception as e:
+            print(f"Inline latex processing error: {e}")
+            return text
+
     def _process_paragraph(self, paragraph) -> str:
         """Ghép các Run lại thành dòng và làm sạch label"""
         line_content = ""
-        for run in paragraph.runs:
-            line_content += self._process_run(run, paragraph)
+        
+        # First, check for paragraph-level m:oMath or m:oMathPara elements
+        # These are direct children of the paragraph, not inside runs
+        para_xml = paragraph._element
+        
+        # Process all children of paragraph element in order
+        for child in para_xml:
+            tag = etree.QName(child.tag).localname if child.tag else ''
+            
+            # 1. Handle oMath/oMathPara (MathProcessor)
+            if tag in ('oMathPara', 'oMath'):
+                # For oMathPara, we need to find internal oMaths or treat the whole thing?
+                # omml_to_latex handles oMathPara wrapping.
+                # But here we stick to the pattern of one asset per math object
+                
+                # MathProcessor.process_omml_element handles the conversion
+                latex_str = self.math_processor.process_omml_element(child)
+                
+                if latex_str:
+                    self.math_count += 1
+                    math_id = f"mathtype_{self.math_count}"
+                    self.assets[math_id] = {
+                        "type": "math",
+                        "latex": latex_str,
+                        "placeholder": "[Công thức]"
+                    }
+                    line_content += f"[!m:${math_id}$]"
+            
+            # 2. Handle runs (text, images, inline math)
+            elif tag == 'r':
+                # Find the corresponding run in paragraph.runs by matching XML element
+                for run in paragraph.runs:
+                    if run._element is child:
+                        line_content += self._process_run(run, paragraph)
+                        break
+
+        # Check for inline LaTeX text ($...$) in the full combined line
+        line_content = self._process_inline_latex_text(line_content)
 
         # BƯỚC QUAN TRỌNG: Làm sạch label bị split
         line_content = self._clean_bold_labels(line_content)

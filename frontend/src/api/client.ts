@@ -32,16 +32,27 @@ apiClient.interceptors.response.use(
         // Handle specific error codes
         if (error.response) {
             const status = error.response.status;
+            const data = error.response.data as any;
 
             if (status === 401) {
                 console.error('[API] Unauthorized - please login');
             } else if (status === 404) {
                 console.error('[API] Resource not found');
             } else if (status >= 500) {
-                console.error('[API] Server error:', error.response.data);
+                console.error('[API] Server error:', data);
+            }
+
+            // Extract friendly error message if available
+            if (data && data.detail) {
+                 // Return a new Error object with the friendly message
+                 // This allows UI code to simply display err.message
+                 const friendlyError = new Error(data.detail);
+                 (friendlyError as any).originalError = error;
+                 return Promise.reject(friendlyError);
             }
         } else if (error.request) {
             console.error('[API] Network error - no response received');
+            return Promise.reject(new Error("Lỗi kết nối mạng. Vui lòng kiểm tra internet của bạn."));
         }
 
         return Promise.reject(error);

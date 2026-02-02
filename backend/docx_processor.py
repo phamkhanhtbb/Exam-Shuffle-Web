@@ -5,7 +5,7 @@ import logging
 import io
 import time
 from typing import Callable, Optional
-from core_logic import parse_exam_template, generate_variant_from_structure
+from core import parse_exam_template, generate_variant_from_structure
 
 logger = logging.getLogger("worker")
 

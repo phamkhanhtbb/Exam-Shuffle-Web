@@ -6,9 +6,18 @@ interface PreviewPanelProps {
     width: number;
     isLoading: boolean;
     previewData: { raw_text: string; assets_map: AssetMap } | null;
+    onLineClick?: (lineNumber: number) => void;
+    onAnswerSelect?: (questionIndex: number, answer: string, sourceLineNumber: number, answerLineNumber: number) => void;
+    correctAnswers?: Map<number, string>;
+    trueFalseAnswers?: Map<string, boolean>;
+    onTrueFalseToggle?: (questionIndex: number, letter: string, sourceLineNumber: number, answerLineNumber: number) => void;
+    onShortAnswerChange?: (questionIndex: number, text: string) => void;
 }
 
-const PreviewPanel: React.FC<PreviewPanelProps> = ({ width, isLoading, previewData }) => {
+const PreviewPanel: React.FC<PreviewPanelProps> = ({
+    width, isLoading, previewData,
+    onLineClick, onAnswerSelect, correctAnswers, trueFalseAnswers, onTrueFalseToggle, onShortAnswerChange
+}) => {
     return (
         <div
             className="flex flex-col border-r border-gray-200 bg-gray-50/50 min-w-0 transition-none"
@@ -31,7 +40,16 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ width, isLoading, previewDa
                 )}
                 {previewData && (
                     <div className="max-w-[21cm] mx-auto bg-white min-h-[29.7cm] shadow-lg border border-gray-200 p-10 transition-all origin-top animate-fade-in-up preview-paper">
-                        <PreviewRenderer rawText={previewData.raw_text} assetsMap={previewData.assets_map} />
+                        <PreviewRenderer
+                            rawText={previewData.raw_text}
+                            assetsMap={previewData.assets_map}
+                            onLineClick={onLineClick}
+                            onAnswerSelect={onAnswerSelect}
+                            correctAnswers={correctAnswers}
+                            trueFalseAnswers={trueFalseAnswers}
+                            onTrueFalseToggle={onTrueFalseToggle}
+                            onShortAnswerChange={onShortAnswerChange}
+                        />
                     </div>
                 )}
             </div>

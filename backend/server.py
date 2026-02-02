@@ -4,6 +4,8 @@ import json
 import time
 import logging
 import io
+import asyncio
+import zipfile
 import boto3
 from docx import Document
 from decimal import Decimal
@@ -14,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from docx_serializer import DocxSerializer
+from exceptions import ExamError, InvalidExamFormatException, AnswerKeyNotFoundError, FontError, EmptyQuestionError
 from config import settings
 from schemas import (
     UploadUrlRequest, UploadUrlResponse,
@@ -174,10 +177,18 @@ async def preview_exam(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         file_stream = io.BytesIO(contents)
-        doc = Document(file_stream)
+        
+        # Validation file type via python-docx
+        try:
+             doc = Document(file_stream)
+        except Exception:
+             raise HTTPException(status_code=400, detail="File không hợp lệ hoặc bị lỗi (Không phải file DOCX chuẩn)")
 
         serializer = DocxSerializer(doc)
-        result = serializer.serialize()
+        
+        # Run CPU-bound serialization in a thread pool to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, serializer.serialize)
 
         return PreviewResponse(
             status="success",
@@ -186,10 +197,30 @@ async def preview_exam(file: UploadFile = File(...)):
                 assets_map=result["assets_map"]
             )
         )
-
+    
+    except ExamError as e:
+        logger.warning(f"Preview Logic Error: {e.message}")
+        raise HTTPException(status_code=400, detail=e.message)
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Preview Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Lỗi xử lý file: {str(e)}")
+        logger.error(f"Preview Error: {str(e)}", exc_info=True)
+        # Check for specific likely errors
+        if "BadZipFile" in str(type(e).__name__):
+             raise HTTPException(status_code=400, detail="File DOCX bị lỗi (Bad Zip). Vui lòng thử lại với file khác.")
+        if "PackageNotFoundError" in str(type(e).__name__):
+             raise HTTPException(status_code=400, detail="File không đúng định dạng DOCX hoặc bị hỏng.")
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống khi xử lý file: {str(e)}")
+
+
+# --- EXCEPTION HANDLERS ---
+@app.exception_handler(ExamError)
+async def exam_error_handler(request, exc: ExamError):
+    return JSONResponse(
+        status_code=400,
+        content={"detail": exc.message, "code": exc.code}
+    )
+
 
 
 # --- MAIN ---

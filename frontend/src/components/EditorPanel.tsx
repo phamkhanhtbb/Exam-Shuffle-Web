@@ -1,6 +1,10 @@
 import React, { useRef } from 'react';
 import { Code, Edit3 } from 'lucide-react';
 
+export interface EditorPanelHandle {
+    scrollToLine: (lineNumber: number) => void;
+}
+
 interface EditorPanelProps {
     width: number;
     value: string;
@@ -21,9 +25,10 @@ const highlightSyntax = (text: string): string => {
         '<span class="text-indigo-600 font-bold">$1</span>'
     );
 
-    // A., B., C., D. answers - Red
+    // A., B., C., D. (and *A., a., etc.) answers - Red
+    // Match start of line OR whitespace preceding, then optional *, then letter, then dot or paren
     html = html.replace(
-        /^(\s*)(A\.|B\.|C\.|D\.)/gm,
+        /(\s|^)(\*?[A-D][\.\)])/gim,
         '$1<span class="text-red-500 font-bold">$2</span>'
     );
 
@@ -60,9 +65,31 @@ const highlightSyntax = (text: string): string => {
     return html;
 };
 
-const EditorPanel: React.FC<EditorPanelProps> = ({ width, value, onChange }) => {
+const EditorPanel = React.forwardRef<EditorPanelHandle, EditorPanelProps>(({ width, value, onChange }, ref) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
+
+    React.useImperativeHandle(ref, () => ({
+        scrollToLine: (lineNumber: number) => {
+            if (textareaRef.current) {
+                // Line height is 1.5 * 14px = 21px
+                const lineHeight = 21;
+                const scrollTop = (lineNumber - 1) * lineHeight;
+
+                // Use smooth scrolling
+                textareaRef.current.scrollTo({
+                    top: scrollTop,
+                    behavior: 'smooth'
+                });
+                // Also focus logic? Focus might jump, so maybe just focus without scroll?
+                // Actually, if we focus, browser might auto-scroll.
+                // Let's keep focus but rely on scrollTo for positioning.
+                if (document.activeElement !== textareaRef.current) {
+                    textareaRef.current.focus({ preventScroll: true });
+                }
+            }
+        }
+    }));
 
     // Sync scroll between textarea and highlight overlay
     const handleScroll = () => {
@@ -76,12 +103,14 @@ const EditorPanel: React.FC<EditorPanelProps> = ({ width, value, onChange }) => 
         fontFamily: 'Consolas, Monaco, "Courier New", monospace',
         fontSize: '14px',
         lineHeight: '1.5',
+
         letterSpacing: '0px',
         padding: '16px',
-        whiteSpace: 'pre-wrap',       // Ensure consistent wrapping
-        wordWrap: 'break-word',       // Legacy support
+        whiteSpace: 'pre-wrap',       // Enable wrapping for readability
+        wordWrap: 'break-word',       // Ensure long words break
         overflowWrap: 'break-word',   // Modern standard
         overflowY: 'scroll',          // Force scrollbar on both
+        overflowX: 'hidden',          // Hide horizontal scroll (handled by wrap)
         boxSizing: 'border-box',      // Include padding/border in size
         margin: 0,
         border: 'none',
@@ -126,6 +155,8 @@ const EditorPanel: React.FC<EditorPanelProps> = ({ width, value, onChange }) => 
             </div>
         </div>
     );
-};
+});
+
+EditorPanel.displayName = 'EditorPanel';
 
 export default EditorPanel;
