@@ -20,12 +20,15 @@ nsmap = {
 }
 
 
+
 class DocxSerializer:
-    def __init__(self, doc_obj):
+    def __init__(self, doc_obj, answer_map: dict = None):
         self.doc = doc_obj
         self.assets = {}
         self.img_count = 0
         self.math_count = 0
+        self.answer_map = answer_map or {}
+        self.current_q_num = 0
         
         # Initialize processors
         self.image_processor = ImageProcessor()
@@ -39,6 +42,10 @@ class DocxSerializer:
             r"^\s*[A-Da-d][\.\\):]?\s*$",  # Matches: A., B), c:, d.
             re.IGNORECASE
         )
+        # Regex to detect Question Number Update
+        self.q_num_pattern = re.compile(r"^\s*(?:Câu|Bài)\s+(\d+)", re.IGNORECASE)
+        # Regex to detect Option Start: A. B. ...
+        self.opt_pattern = re.compile(r"^\s*([A-D])[\.\)]", re.IGNORECASE)
 
     def _get_image_data(self, blip_id):
         """Lấy binary data của ảnh từ rId"""
@@ -248,6 +255,33 @@ class DocxSerializer:
 
         # BƯỚC QUAN TRỌNG: Làm sạch label bị split
         line_content = self._clean_bold_labels(line_content)
+        
+        # --- LOGIC AUTO-MARKING ---
+        clean_text = re.sub(r"\[![a-z]:|\]", "", line_content).strip()
+        
+        # 1. Update Current Question Number
+        q_match = self.q_num_pattern.match(clean_text)
+        if q_match:
+            try:
+                self.current_q_num = int(q_match.group(1))
+            except:
+                pass
+        
+        # 2. Check if this is an Option line for the current question
+        if self.current_q_num and self.current_q_num in self.answer_map:
+            correct_char = self.answer_map[self.current_q_num] # e.g. "A"
+            
+            opt_match = self.opt_pattern.match(clean_text)
+            if opt_match:
+                opt_char = opt_match.group(1).upper()
+                if opt_char == correct_char.upper():
+                    # MARK IT!
+                    # Only mark if not already marked with *
+                    if not line_content.strip().startswith("*"):
+                        # Prepend * to line_content
+                        # Be careful with leading spaces or tags
+                        # Just naive prepend
+                        line_content = "*" + line_content
 
         return line_content
 
@@ -257,7 +291,7 @@ class DocxSerializer:
         for row in table.rows:
             cells_txt = []
             for cell in row.cells:
-                # _process_paragraph đã bao gồm logic clean label
+                # _process_paragraph đã bao gồm logic clean label & auto-mark
                 cell_content = " ".join([self._process_paragraph(p) for p in cell.paragraphs])
                 cells_txt.append(cell_content.strip())
             row_str = "[* " + " | ".join(cells_txt) + " *]"
@@ -267,14 +301,56 @@ class DocxSerializer:
     def serialize(self) -> dict:
         """Hàm chính gọi từ bên ngoài"""
         raw_lines = []
+        
+        # Import regex constants
+        from core.constants import END_NOTE_PATTERN, ANSWER_HEADER_PATTERN
+        
+        # Helper check for "Đáp án: ..." line (inline answer)
+        # Note: ANSWER_HEADER_PATTERN matches global header, we need to detect "Đáp án: " content line.
+        # Reuse logic or simple regex:
+        inline_ans_pattern = re.compile(r"^(?:Đáp án|ĐÁP ÁN|Dap an)[:\.]", re.IGNORECASE)
+
         for child in self.doc.element.body.iterchildren():
+            txt = ""
             if isinstance(child, CT_P):
                 para = Paragraph(child, self.doc)
                 txt = self._process_paragraph(para)
-                if txt.strip(): raw_lines.append(txt)
             elif isinstance(child, CT_Tbl):
                 table = Table(child, self.doc)
                 txt = self._process_table(table)
+            
+            if txt.strip():
+                # Check for reordering: "HẾT" then "Đáp án: ..." -> Swap
+                # Only check if we have lines
+                if raw_lines:
+                    last_line = raw_lines[-1]
+                    
+                    # Clean tags from last_line to check pattern
+                    # Tags like [!b:...] or [!m:...]
+                    clean_last = re.sub(r"\[![a-z]:|\]", "", last_line).strip()
+                    
+                    # Clean tags from current txt to check pattern
+                    clean_txt = re.sub(r"\[![a-z]:|\]", "", txt).strip()
+
+                    # Robust check for HẾT (case insensitive, contains HẾT)
+                    # Use strictly END_NOTE_PATTERN logic but on clean text? 
+                    # Or just: "HẾT" surrounded by dashes or similar?
+                    # Let's stick to END_NOTE_PATTERN but ensure it covers unicode dashes if needed,
+                    # OR just check for HẾT word boundary?
+                    # User's HẾT is usually "------ HẾT ------"
+                    
+                    is_end_marker = False
+                    if "HẾT" in clean_last.upper():
+                         is_end_marker = True
+                    
+                    if is_end_marker:
+                        # Check if current line is "Đáp án: ..."
+                        if inline_ans_pattern.match(clean_txt):
+                             print(f"DEBUG: Swapping '{clean_txt}' with '{clean_last}'")
+                             # Insert BEFORE the last line
+                             raw_lines.insert(-1, txt)
+                             continue
+                
                 raw_lines.append(txt)
 
         return {

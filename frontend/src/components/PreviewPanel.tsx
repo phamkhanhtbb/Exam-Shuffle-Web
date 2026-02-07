@@ -11,7 +11,7 @@ interface PreviewPanelProps {
     correctAnswers?: Map<number, string>;
     trueFalseAnswers?: Map<string, boolean>;
     onTrueFalseToggle?: (questionIndex: number, letter: string, sourceLineNumber: number, answerLineNumber: number) => void;
-    onShortAnswerChange?: (questionIndex: number, text: string) => void;
+    onShortAnswerChange?: (questionIndex: number, text: string, sourceLineNumber: number) => void;
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({

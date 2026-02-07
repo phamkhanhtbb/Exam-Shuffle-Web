@@ -32,8 +32,8 @@ table = None
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 
 
-def _parse_sqs_body(message: Dict[str, Any]) -> Tuple[str, str, Dict[str, str], Optional[List[int]], int]:
-    """Parse message body từ SQS, lấy thông tin job."""
+def _parse_sqs_body(message: Dict[str, Any]) -> Tuple[str, str, Dict[str, str], Optional[List[int]], int, Optional[dict]]:
+    """Parse message body từ SQS, lấy thông tin job. Return thêm answerMap."""
     raw_body = message.get('Body')
     if not raw_body:
         raise ValueError("Message không có Body")
@@ -42,6 +42,7 @@ def _parse_sqs_body(message: Dict[str, Any]) -> Tuple[str, str, Dict[str, str], 
     job_id = body.get('jobId')
     file_key = body.get('fileKey')
     permutation = body.get('permutation')
+    answer_map = body.get('answerMap') # New field
 
     # Lấy số lượng đề, mặc định là 1
     num_variants = body.get('numVariants', 1)
@@ -58,7 +59,10 @@ def _parse_sqs_body(message: Dict[str, Any]) -> Tuple[str, str, Dict[str, str], 
         if isinstance(permutation, list) and all(isinstance(x, int) for x in permutation):
             perm_list = [int(x) for x in permutation]
 
-    return job_id.strip(), file_key.strip(), perm_list, num_variants
+    return job_id.strip(), file_key.strip(), perm_list, num_variants, answer_map
+
+
+
 
 
 def _safe_output_key(job_id: str, input_file_key: str) -> str:
@@ -190,7 +194,7 @@ def process_message() -> None:
 
     try:
         # 1. Parse thông tin job
-        job_id, file_key, permutation, num_variants = _parse_sqs_body(message)
+        job_id, file_key, permutation, num_variants, answer_map = _parse_sqs_body(message)
         logger.info(f"JOB: {job_id} | File: {file_key} | Variants: {num_variants} | Attempt: {receive_count}")
 
         # 2. Kiểm tra số lần retry
@@ -237,7 +241,8 @@ def process_message() -> None:
                 job_id=job_id,
                 num_variants=num_variants,
                 output_zip_path=local_output_path,
-                progress_callback=heartbeat_callback
+                progress_callback=heartbeat_callback,
+                external_answer_map=answer_map
             )
 
             # Upload ZIP lên S3 Output

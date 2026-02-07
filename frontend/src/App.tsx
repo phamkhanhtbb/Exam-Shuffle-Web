@@ -11,15 +11,27 @@ import PaneResizer from './components/PaneResizer';
 import ProcessingOverlay from './components/ProcessingOverlay';
 
 // Import React Query hooks
-import { useCreateJob, useJobStatus, usePreviewExam } from './hooks';
+import { useCreateJob, useJobStatus, usePreviewExam, useExportKey } from './hooks';
 import { UploadJob } from './types';
 
 function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [numVariants, setNumVariants] = useState<number>(10);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<{ raw_text: string; assets_map: AssetMap } | null>(null);
+  const [previewData, setPreviewData] = useState<{ raw_text: string; assets_map: AssetMap, question_count: number } | null>(null);
   const [error, setError] = useState<string>('');
+
+  // Computed: Real-time question count from text
+  const [editorQuestionCount, setEditorQuestionCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (previewData?.raw_text) {
+      // Count lines starting with "Câu" or "Bai"
+      // Regex must match backend parser: ^\s*(Câu|Bai|Bài)\s+\d+
+      const matches = previewData.raw_text.match(/^\s*(?:Câu|Bai|Bài)\s+\d+/gim);
+      setEditorQuestionCount(matches ? matches.length : 0);
+    }
+  }, [previewData?.raw_text]);
 
   // Interaction State
   const [correctAnswers, setCorrectAnswers] = useState<Map<number, string>>(new Map());
@@ -38,6 +50,7 @@ function App() {
   // React Query hooks
   const { createJob, isLoading: isCreatingJob } = useCreateJob();
   const previewMutation = usePreviewExam();
+  const exportKeyMutation = useExportKey();
 
   // Auto-polling job status
   const { data: jobStatusData } = useJobStatus(currentJobId, {
@@ -113,6 +126,16 @@ function App() {
         }
       } catch (err) {
         console.error('Preview error:', err);
+        setError('Lỗi đọc file: ' + (err instanceof Error ? err.message : String(err)));
+        setSelectedFile(null); // Reset file selection to clear zombie state
+        setPreviewData(null);
+        setUploadProgress(0);
+        setShowOverlay(true); // Show overlay to display error? Or just use main error display?
+        // Actually, main error display only shows if showOverlay is true OR if we have another mechanism.
+        // Looking at render: ProcessingOverlay takes `error` prop.
+        // But main layout doesn't show error banner.
+        // Let's use setShowOverlay(true) to show the error in the overlay.
+        setShowOverlay(true);
       }
     }
   };
@@ -152,12 +175,22 @@ function App() {
     setError('');
 
     try {
+      // Pass raw_text from Preview to Create Job logic
+      const rawText = previewData?.raw_text || '';
+
       const jobId = await createJob(selectedFile, numVariants, (progress) => {
         setUploadProgress(progress.percentage);
-      });
+      }, rawText);
+
       setCurrentJobId(jobId);
     } catch (err) {
       setError('Lỗi: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const handleExportKey = () => {
+    if (previewData?.raw_text) {
+      exportKeyMutation.mutate(previewData.raw_text);
     }
   };
 
@@ -196,64 +229,31 @@ function App() {
         }
       }
 
-      // Search for the specific answer line (A., B., C., D.) to toggle '*'
-      // Pattern: (*?)<Letter>[.)]
-      const targetLetter = answer.toUpperCase();
-      let newLines = [...lines];
+      // 2. Clear existing * from ALL options (A-H) in this range
+      let newLines = [...lines]; // Define newLines here!
 
-      for (let i = startIdx; i < endIdx; i++) {
-        const line = newLines[i];
-        const trimmed = line.trim();
+      for (let j = startIdx; j < endIdx; j++) {
+        // Remove * from *A., *B., ... *H.
+        newLines[j] = newLines[j].replace(/(\*)([A-H])([.\\)])/g, '$2$3');
+      }
 
-        // Check if this line contains the target answer label
-        // Regex to find "A." or "*A." or "A)" at start or after space
-        // Careful not to match "A." inside text content if possible, but standard format is rigid.
-        // Simple check: start of line or after pipe/space
+      // 3. Set the new answer using answerLineNumber directly
+      if (answerLineNumber && answerLineNumber > 0 && answerLineNumber <= lines.length) {
+        const lineIdx = answerLineNumber - 1;
+        const targetLine = lines[lineIdx]; // Use ORIGINAL line to check state
+        const targetLetter = answer.toUpperCase();
 
-        // Regex: Find the Label Pattern for THIS answer
-        // Group 1: Optional '*'
-        // Group 2: The Letter
-        const regex = new RegExp(`(\\*?)(${targetLetter})([.\\)])`, 'g');
+        // Check if it was already selected
+        // Regex: (*?)Letter[.)]
+        const wasSelectedRegex = new RegExp(`\\*${targetLetter}([.\\)])`);
+        const wasSelected = wasSelectedRegex.test(targetLine);
 
-        if (regex.test(trimmed)) {
-          // Determine if we are adding or removing
-          // If currently has *, remove it. If not, add it.
-          // BUT: We must also remove * from valid siblings if single choice logic?
-          // The user request says "thêm *". Implicitly implies single choice toggle or multi?
-          // Usually MCQ is single choice. Let's assume single choice for now: 
-          //    Clear * from other options in this question range, Set * on this one.
-          //    OR just toggle if it's the same.
-
-          // Let's implement toggle logic for the clicked one, and if it's new, clear others.
-
-          // Strategy: Rebuild the lines in this range.
-
-          // 1. Clear existing * from A/B/C/D in this range
-          for (let j = startIdx; j < endIdx; j++) {
-            // Remove * from A., B., C., D.
-            newLines[j] = newLines[j].replace(/(\*)([A-D])([.\\)])/g, '$2$3');
-          }
-
-          // 2. Add * to the specific target if it wasn't already selected (logic check needed?)
-          // Actually sync logic: 
-          // If previous state had this answer, we are deselecting -> Done (already cleared above)
-          // If previous state different or null -> Add *
-
-          // Check if we effectively 'deselected' by clearing using previous state logic is tricky 
-          // because we just wiped the text markers. 
-          // Better: Check the SPECIFIC line before clearing.
-
-          const wasSelected = line.includes(`*${targetLetter}`);
-          if (!wasSelected) {
-            // Add * back to this specific instance
-            // Use loop j again or just modify current line?
-            // Need to be careful if multiple options on one line.
-            newLines[i] = newLines[i].replace(
-              new RegExp(`(^|\\s)(${targetLetter})([.\\)])`),
-              '$1*$2$3'
-            );
-          }
-          break; // Handled
+        if (!wasSelected) {
+          // Add * to the specific option
+          newLines[lineIdx] = newLines[lineIdx].replace(
+            new RegExp(`(^|\\s)(${targetLetter})([.\\)])`),
+            '$1*$2$3'
+          );
         }
       }
 
@@ -286,32 +286,27 @@ function App() {
         // Be careful if multiple answers on one line (though rare for T/F).
         // Usually T/F options are: a) ... b) ...
 
-        // Regex: Find (*?)letter)
+        // Regex: Find (*?)letter) - STRICT MODE: letter + ')'
+        // We only support a-d and ) for True/False now to avoid conflicts.
         const regex = new RegExp(`(\\*?)(${targetLetter})\\)`, 'g');
 
         if (regex.test(line)) {
-          // If it has *, remove it. If not, add it.
-          // Note: The previous logic had tri-state (True/False/Off).
-          // But for Text Sync, we only map "True" -> "*" and "False/Off" -> "" (no star).
-          // So acts as a simple toggle of the star.
+          // Check if SPECIFIC option has star
+          // We need to be careful not to match *ab) if we look for *b)
+          // But with ) boundary it is safe.
 
-          const hasStar = line.includes(`*${targetLetter})`);
+          const match = line.match(new RegExp(`\\*${targetLetter}\\)`));
+          const hasStar = !!match;
+
           let newLine = line;
 
           if (hasStar) {
             // Remove star: *a) -> a)
-            newLine = line.replace(
-              new RegExp(`\\*${targetLetter}\\)`, 'g'),
-              `${targetLetter})`
-            );
+            newLine = newLine.replace(new RegExp(`\\*${targetLetter}\\)`, 'g'), `${targetLetter})`);
           } else {
             // Add star: a) -> *a)
-            // Check boundaries to avoid matching inside words? 
-            // Usually " a)" or "^a)"
-            newLine = line.replace(
-              new RegExp(`(^|\\s)(${targetLetter})\\)`, 'g'),
-              `$1*${targetLetter})`
-            );
+            // Use word boundary or just the letter+paren
+            newLine = newLine.replace(new RegExp(`(^|\\s)(${targetLetter})\\)`, 'g'), `$1*${targetLetter})`);
           }
 
           if (newLine !== line) {
@@ -328,12 +323,88 @@ function App() {
     });
   }, []);
 
-  const handleShortAnswerChange = useCallback((questionIndex: number, text: string) => {
+  const handleShortAnswerChange = useCallback((questionIndex: number, text: string, sourceLineNumber: number) => {
+    // 1. Update Correct Answers Map
     setCorrectAnswers(prev => {
       const newMap = new Map(prev);
       if (text) newMap.set(questionIndex, text);
       else newMap.delete(questionIndex);
       return newMap;
+    });
+
+    // 2. Update Raw Text (Bidirectional Sync)
+    setPreviewData(prev => {
+      if (!prev) return prev;
+      const lines = prev.raw_text.split('\n');
+
+      if (!sourceLineNumber || sourceLineNumber < 1) return prev;
+      const startIdx = sourceLineNumber - 1;
+
+      // Find End of Question Block
+      let endIdx = lines.length;
+      const questionRegex = /(?:\[ID:[^\]]*\]\s*)?Câu\s*\d+/i;
+
+      for (let i = startIdx + 1; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        const upper = trimmed.toUpperCase();
+
+        // Check for End Markers (HẾT, ĐÁP ÁN table header)
+        if (/^[-=\s]*HẾT[-=\s]*$/.test(upper) ||
+          upper === 'ĐÁP ÁN' ||
+          upper === 'BẢNG ĐÁP ÁN' ||
+          upper.includes('[!B:ĐÁP ÁN]') // Check for bold tagged markers too
+        ) {
+          endIdx = i;
+          break;
+        }
+
+        if (trimmed.match(questionRegex) ||
+          trimmed.toLowerCase().includes('phần ii') ||
+          trimmed.toLowerCase().includes('phần 2') || // Add Part 2 check variants
+          trimmed.toLowerCase().includes('phần iii') ||
+          trimmed.toLowerCase().includes('phần 3')) { // Add Part 3 check variants
+          endIdx = i;
+          break;
+        }
+      }
+
+      // Look for existing 'Đáp án:' line within [startIdx, endIdx)
+      let answerLineIdx = -1;
+      const answerRegex = /^Đáp án:/i;
+
+      for (let i = startIdx; i < endIdx; i++) {
+        if (answerRegex.test(lines[i].trim())) {
+          answerLineIdx = i;
+          break;
+        }
+      }
+
+      const newLines = [...lines];
+
+      if (answerLineIdx !== -1) {
+        // Found existing line
+        if (text) {
+          // Update it
+          newLines[answerLineIdx] = `Đáp án: ${text}`;
+        } else {
+          // If text empty, remove the line? Or keep it empty? 
+          // Let's remove it to keep text clean, or just empty "Đáp án:"
+          // User request: "adds line...". Implies dynamic.
+          // Let's set it to empty for now to avoid jumping structure too much, or delete.
+          // Deleting is cleaner for generating clean regex later.
+          newLines.splice(answerLineIdx, 1);
+        }
+      } else {
+        // Not found, insert at the end of the block
+        if (text) {
+          newLines.splice(endIdx, 0, `Đáp án: ${text}`);
+        }
+      }
+
+      return {
+        ...prev,
+        raw_text: newLines.join('\n')
+      };
     });
   }, []);
 
@@ -349,6 +420,7 @@ function App() {
           onNumVariantsChange={setNumVariants}
           onReset={handleReset}
           onSubmit={handleSubmit}
+          onExportKey={handleExportKey}
         />
       )}
 
@@ -361,6 +433,17 @@ function App() {
             className="workspace-wrapper flex w-full h-full bg-gray-100 overflow-hidden animate-expand"
             ref={containerRef}
           >
+            {/* WARNING BANNER */}
+            {previewData && (editorQuestionCount !== previewData.question_count) && (
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 shadow-lg rounded flex items-center gap-3 animate-bounce-in">
+                <div className="font-bold text-lg">⚠️ Cảnh báo lệch câu!</div>
+                <div>
+                  <p>Hệ thống tìm thấy <b>{editorQuestionCount}</b> câu trong văn bản, nhưng file gốc có <b>{previewData.question_count}</b> câu.</p>
+                  <p className="text-sm">Vui lòng kiểm tra các dòng "Câu..." để đảm bảo chúng nằm riêng biệt trên một dòng, tránh lỗi "X".</p>
+                </div>
+              </div>
+            )}
+
             <PreviewPanel
               width={leftWidth}
               isLoading={previewMutation.isPending}

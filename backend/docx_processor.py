@@ -1,4 +1,5 @@
 import os
+import re
 import zipfile
 import openpyxl
 import logging
@@ -15,7 +16,9 @@ def process_exam_batch(
         job_id: str,
         num_variants: int,
         output_zip_path: str,
-        progress_callback: Optional[Callable[[], None]] = None
+
+        progress_callback: Optional[Callable[[], None]] = None,
+        external_answer_map: Optional[dict] = None
 ) -> None:
     logger.info(f"[{job_id}] Parsing template structure...")
     structure = parse_exam_template(source_bytes)
@@ -36,7 +39,8 @@ def process_exam_batch(
                 source_bytes=source_bytes,
                 structure=structure,
                 seed=current_seed,
-                exam_code=exam_code
+                exam_code=exam_code,
+                external_answer_map=external_answer_map
             )
 
             all_answers_data[exam_code] = answers_list
@@ -73,13 +77,33 @@ def _generate_excel_answers(all_answers_data: dict, job_id: str) -> bytes:
 
     max_questions = 0
     if sorted_codes:
-        max_questions = len(all_answers_data[sorted_codes[0]])
+        max_questions = max(len(all_answers_data[k]) for k in sorted_codes)
 
     for q_idx in range(max_questions):
         row_data = [q_idx + 1]
         for code in sorted_codes:
             ans_list = all_answers_data[code]
             ans = ans_list[q_idx] if q_idx < len(ans_list) else ""
+            
+            # Try to convert to number if possible (Part 3 requirement)
+            if isinstance(ans, str) and ans.strip():
+                clean_ans = ans.strip()
+                # Replace Vietnamese/European decimal comma with dot for parsing
+                # But be careful not to break "1,2" (list) vs "1,2" (decimal)
+                # Heuristic: If it looks like a SINGLE number
+                if re.match(r'^[-+]?[0-9]+[.,]?[0-9]*$', clean_ans):
+                    try:
+                        # Normalize decimal separator
+                        val_str = clean_ans.replace(',', '.')
+                        val_float = float(val_str)
+                        # Check if integer
+                        if val_float.is_integer():
+                            ans = int(val_float)
+                        else:
+                            ans = val_float
+                    except ValueError:
+                        pass
+            
             row_data.append(ans)
         ws.append(row_data)
 

@@ -93,7 +93,8 @@ export const useCreateJob = () => {
     const createJob = async (
         file: File,
         numVariants: number,
-        onProgress?: (progress: UploadProgress) => void
+        onProgress?: (progress: UploadProgress) => void,
+        rawText?: string
     ): Promise<string> => {
         // 1. Get presigned URL
         const uploadData = await getUploadUrl.mutateAsync({
@@ -113,6 +114,7 @@ export const useCreateJob = () => {
             jobId: uploadData.jobId,
             fileKey: uploadData.fileKey,
             numVariants,
+            rawText,
         });
 
         return jobResult.jobId;

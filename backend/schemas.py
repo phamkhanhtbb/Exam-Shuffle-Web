@@ -1,8 +1,5 @@
-"""
-Pydantic schemas for API request/response validation
-"""
+from typing import List, Optional, Dict
 from pydantic import BaseModel
-from typing import Optional
 
 
 # --- REQUEST MODELS ---
@@ -16,6 +13,7 @@ class SubmitJobRequest(BaseModel):
     jobId: str
     fileKey: str
     numVariants: int = 10
+    rawText: Optional[str] = None
 
 
 # --- RESPONSE MODELS ---
@@ -41,7 +39,8 @@ class JobStatusResponse(BaseModel):
 
 class PreviewData(BaseModel):
     raw_text: str
-    assets_map: dict
+    assets_map: Dict[str, Dict]
+    question_count: int = 0
 
 
 class PreviewResponse(BaseModel):

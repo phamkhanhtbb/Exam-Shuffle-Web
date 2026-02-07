@@ -21,14 +21,14 @@ const highlightSyntax = (text: string): string => {
 
     // Câu 1, Câu 2, etc. - Purple (indigo)
     html = html.replace(
-        /(Câu\s*\d+[\.:]*)/gi,
+        /(Câu\s*\d+[:.]*)/gi,
         '<span class="text-indigo-600 font-bold">$1</span>'
     );
 
     // A., B., C., D. (and *A., a., etc.) answers - Red
     // Match start of line OR whitespace preceding, then optional *, then letter, then dot or paren
     html = html.replace(
-        /(\s|^)(\*?[A-D][\.\)])/gim,
+        /(\s|^)(\*?[A-D][.)])/gim,
         '$1<span class="text-red-500 font-bold">$2</span>'
     );
 
@@ -48,13 +48,19 @@ const highlightSyntax = (text: string): string => {
     // [table:ID$] - Tables - Blue (Deep)
     html = html.replace(
         /(\[table:[^\]]+\])/gi,
-        '<span class="text-blue-700 bg-blue-50 font-bold">$1</span>'
+        '$1'
+    );
+
+    // [ID:...] - System IDs - Gray/Dimmed (Do not change font size to keep alignment)
+    html = html.replace(
+        /(\[ID:[a-fA-F0-9]{8,}\])/g,
+        '<span class="text-gray-400 opacity-60">$1</span>'
     );
 
     // Catch-all for other brackets like [* ... *] for tables
     html = html.replace(
         /(\[\*\s.*?\s\*\])/gi,
-        '<span class="text-blue-700 bg-blue-50 font-bold">$1</span>'
+        '$1'
     );
 
     // Fix trailing newline issue: HTML ignores the last \n, causing a 1-line mismatch

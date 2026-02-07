@@ -58,16 +58,39 @@ def _create_simple_para_element(text: str) -> OxmlElement:
 
 
 def _iter_block_items(doc: _Document):
+    """
+    Iterate over block items, but FLATTEN tables into their constituent paragraphs.
+    This ensures that content inside tables is parsed linearly just like the frontend editor text.
+    """
+    def _recurse_element(element):
+        if isinstance(element, CT_P):
+            yield "p", Paragraph(element, doc)
+        elif isinstance(element, CT_Tbl):
+            table = Table(element, doc)
+            for row in table.rows:
+                for cell in row.cells:
+                    # Recursively process cell content
+                    # Note: Cell content is usually paragraphs or (nested) tables
+                    for child in cell._element.iterchildren():
+                        if isinstance(child, CT_P):
+                            yield "p", Paragraph(child, doc)
+                        elif isinstance(child, CT_Tbl):
+                             yield from _recurse_element(child)
+
     for child in doc.element.body.iterchildren():
-        if isinstance(child, CT_P):
-            yield "p", Paragraph(child, doc)
-        elif isinstance(child, CT_Tbl):
-            yield "tbl", Table(child, doc)
+        yield from _recurse_element(child)
 
 
-def _get_text(block: Union[Paragraph, Table]) -> str:
+def _get_text(block: Union[Paragraph, Table, OxmlElement]) -> str:
     if isinstance(block, Paragraph): return block.text or ""
-    return ""
+    # Fallback for raw OxmlElement (CT_P)
+    text = ""
+    if hasattr(block, 'iter'):
+        for node in block.iter():
+            if node.tag.endswith('}t'): # Matches w:t in any namespace
+                if node.text:
+                    text += node.text
+    return text
 
 
 def _clear_body_keep_sectpr(doc: _Document) -> Optional[OxmlElement]:

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 from docx.oxml import OxmlElement
 
 # --- DATA STRUCTURES ---
@@ -17,6 +17,8 @@ class QuestionBlock:
     stem_elements: List[OxmlElement] = field(default_factory=list)
     options: List[OptionBlock] = field(default_factory=list)
     mode: str = "mcq"
+    correct_answer_text: Optional[str] = None
+    content_hash: Optional[str] = None
 
 
 @dataclass

@@ -76,6 +76,16 @@ export const examApi = {
         });
         return response.data;
     },
+
+    /**
+     * Export Excel Answer Key from raw text
+     */
+    exportKey: async (rawText: string): Promise<Blob> => {
+        const response = await apiClient.post('/api/export-key', { raw_text: rawText }, {
+            responseType: 'blob'
+        });
+        return response.data;
+    },
 };
 
 export default examApi;

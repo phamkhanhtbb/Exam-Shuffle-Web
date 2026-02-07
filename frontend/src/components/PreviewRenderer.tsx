@@ -14,9 +14,17 @@ interface PreviewRendererProps {
   onAnswerSelect?: (questionIndex: number, answer: string, sourceLineNumber: number, answerLineNumber: number) => void;
   trueFalseAnswers?: Map<string, boolean>;
   onTrueFalseToggle?: (questionIndex: number, letter: string, sourceLineNumber: number, answerLineNumber: number) => void;
-  onShortAnswerChange?: (questionIndex: number, text: string) => void;
+  onShortAnswerChange?: (questionIndex: number, text: string, sourceLineNumber: number) => void;
   onLineClick?: (lineNumber: number) => void;
 }
+
+// ... (lines 20-358 unchanged - skipping context for brevity in tool call, will target specific blocks if possible or use multiple chunks)
+// Wait, replace_file_content is better for contiguous.
+// The file is small enough to perhaps do one block if I include the middle? 
+// Actually, let's just do the QuestionCard component logic first since interfaces are separated.
+// But interfaces are at top.
+// Let's use multi_replace for this to be clean.
+
 
 // --- Types for Parsed Structure ---
 interface QuestionData {
@@ -34,7 +42,8 @@ type ParsedBlock =
   | { type: 'text', id: string, content: string };
 
 // --- Constants & Helpers ---
-const QUESTION_REGEX = /^Câu\s*(\d+)/i;
+// Allow optional [ID:xxx] prefix before Câu
+const QUESTION_REGEX = /(?:\[ID:[^\]]*\]\s*)?Câu\s*(\d+)/i;
 
 const stripFormatMarkers = (text: string): string => {
   return text.replace(/\[!b:/g, '').replace(/\]/g, '').replace(/\[!/g, '');
@@ -92,13 +101,13 @@ const isEndMarker = (line: string): boolean => {
 const hasUppercaseAnswerPattern = (line: string): boolean => {
   const trimmed = line.trim();
   // eslint-disable-next-line no-useless-escape
-  const regex = /(\*?)([A-D])[.\)]/g;
+  const regex = /(\*?)([A-H])[.\)]/g;
   let match;
   while ((match = regex.exec(trimmed)) !== null) {
     const letterIndex = match.index + match[1].length;
     const charBefore = letterIndex > 0 ? trimmed[letterIndex - 1] : '';
     if (charBefore === ']' || charBefore === ':' || /\d/.test(charBefore)) continue;
-    if (charBefore === '' || charBefore === ' ' || charBefore === '\t' || charBefore === '*') return true;
+    if (charBefore === '' || /\s/.test(charBefore) || charBefore === '*') return true;
   }
   return false;
 };
@@ -106,6 +115,7 @@ const hasUppercaseAnswerPattern = (line: string): boolean => {
 const hasLowercaseAnswerPattern = (line: string): boolean => {
   const trimmed = line.trim();
   // eslint-disable-next-line no-useless-escape
+  // PART 2 STRICT: Only a-d and ')'
   return /(?:^|\s)(\*?)[a-d]\)\s*\S/.test(trimmed);
 };
 
@@ -114,18 +124,20 @@ const extractUppercaseAnswers = (line: string): { letter: string; content: strin
   const trimmedLine = line.trim();
   const markers: { index: number; letter: string; isMarkedCorrect: boolean; markerLength: number }[] = [];
   // eslint-disable-next-line no-useless-escape
-  const regex = /(\*?)([A-D])[.\)]\s*/g;
+  const regex = /(\*?)([A-H])[.\)]\s*/g;
   let match;
   while ((match = regex.exec(trimmedLine)) !== null) {
     const letterIndex = match.index + match[1].length;
     const charBefore = letterIndex > 0 ? trimmedLine[letterIndex - 1] : '';
     if (charBefore === ']' || charBefore === ':' || /\d/.test(charBefore)) continue;
-    markers.push({
-      index: match.index,
-      letter: match[2].toUpperCase(),
-      isMarkedCorrect: match[1] === '*',
-      markerLength: match[0].length
-    });
+    if (charBefore === '' || /\s/.test(charBefore) || charBefore === '*') {
+      markers.push({
+        index: match.index,
+        letter: match[2].toUpperCase(),
+        isMarkedCorrect: match[1] === '*',
+        markerLength: match[0].length
+      });
+    }
   }
   for (let i = 0; i < markers.length; i++) {
     const startIdx = markers[i].index + markers[i].markerLength;
@@ -144,9 +156,12 @@ const extractLowercaseAnswers = (line: string): { letter: string; content: strin
   const trimmedLine = line.trim();
   const markers: { index: number; letter: string; isMarkedCorrect: boolean; fullMatch: string }[] = [];
   // eslint-disable-next-line no-useless-escape
+  // PART 2 STRICT: Only a-d and ')'
   const regex = /(\*?)([a-d])\)\s*/g;
   let match;
   while ((match = regex.exec(trimmedLine)) !== null) {
+    // Need similar charBefore check for safety? regex (?:^|\s) handles it mostly.
+    // But let's rely on regex here as it includes \s check
     markers.push({
       index: match.index,
       letter: match[2].toLowerCase(),
@@ -224,6 +239,7 @@ const parseDocumentBlocks = (rawText: string): ParsedBlock[] => {
         const currTrimmed = currLine.trim();
 
         if (currTrimmed.match(QUESTION_REGEX) ||
+          isPart1Header(currTrimmed) ||
           isPart2Header(currTrimmed) ||
           isPart3Header(currTrimmed) ||
           isEndMarker(currTrimmed)) {
@@ -234,13 +250,16 @@ const parseDocumentBlocks = (rawText: string): ParsedBlock[] => {
         }
 
         // Answer extraction logic
-        if (currentPart !== 3 && hasUppercaseAnswerPattern(currTrimmed)) {
+        // PART 1: Uppercase Answers Only (A, B, C, D)
+        if (currentPart === 1 && hasUppercaseAnswerPattern(currTrimmed)) {
           const extracted = extractUppercaseAnswers(currTrimmed);
           extracted.forEach(a => upAnswers.push({
             letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: i + 1
           }));
           i++;
-        } else if (currentPart !== 3 && hasLowercaseAnswerPattern(currTrimmed)) {
+        }
+        // PART 2: Lowercase Answers Only (a, b, c, d)
+        else if (currentPart === 2 && hasLowercaseAnswerPattern(currTrimmed)) {
           const extracted = extractLowercaseAnswers(currTrimmed);
           extracted.forEach(a => lowAnswers.push({
             letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: i + 1
@@ -248,6 +267,8 @@ const parseDocumentBlocks = (rawText: string): ParsedBlock[] => {
           i++;
         } else {
           // Content line
+          // Should we check for Uppercase in Part 2? Usually no.
+          // Should we check for Lowercase in Part 1? NO (This fixes Q2 issue).
           const cleaned = cleanContentText(currLine);
           if (cleaned.trim() && !isJustMarker(cleaned.trim())) {
             qContentLines.push(cleaned);
@@ -263,7 +284,7 @@ const parseDocumentBlocks = (rawText: string): ParsedBlock[] => {
 
       blocks.push({
         type: 'question',
-        id: `q-${qIndex}`,
+        id: `q-${qIndex}-${qStartLine}`,
         data: {
           index: qIndex,
           type: qType,
@@ -365,7 +386,7 @@ interface QuestionCardProps {
   assetsMap: AssetMap;
   onAnswerSelect?: (questionIndex: number, answer: string, sourceLineNumber: number, answerLineNumber: number) => void;
   onTrueFalseToggle?: (questionIndex: number, letter: string, sourceLineNumber: number, answerLineNumber: number) => void;
-  onShortAnswerChange?: (questionIndex: number, text: string) => void;
+  onShortAnswerChange?: (questionIndex: number, text: string, sourceLineNumber: number) => void;
   parseTokens: (text: string, assetsMap: AssetMap) => React.ReactNode;
   sourceLineNumber: number;
   onLineClick?: (lineNumber: number) => void;
@@ -458,7 +479,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               placeholder="Nhập đáp án..."
               value={currentAnswer || ''}
-              onChange={(e) => onShortAnswerChange?.(questionIndex, e.target.value)}
+              onChange={(e) => onShortAnswerChange?.(questionIndex, e.target.value, sourceLineNumber)}
             // No onClick needed here, parent doesn't capture anymore
             />
           </div>

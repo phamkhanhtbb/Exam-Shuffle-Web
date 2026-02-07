@@ -2,7 +2,7 @@ from copy import deepcopy
 import random
 import re
 import io
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from docx import Document
 from docx.oxml import OxmlElement, ns
 from docx.oxml.text.paragraph import CT_P
@@ -14,6 +14,8 @@ from .utils import (
     _recursive_replace_code, _append_element, _clear_body_keep_sectpr,
     _smart_replace_start, _create_simple_para_element, _normalize_format_and_clean
 )
+import logging
+logger = logging.getLogger("worker")
 
 def _build_exam_header(body, sect_pr, header_elements, exam_code):
     """Clone header elements and replace exam code."""
@@ -99,28 +101,46 @@ def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questio
                 p_new = _create_simple_para_element(new_prefix)
                 new_q.stem_elements.insert(0, p_new)
 
-            # Shuffle Options
-            if shuffle_options and new_q.options and new_q.mode == 'mcq':
+            # Shuffle Options (MCQ and True/False)
+            if shuffle_options and new_q.options and new_q.mode in ('mcq', 'true_false'):
                 rng.shuffle(new_q.options)
 
-            # Process Options & Record Answers
+            # Process Options & Record Answers (logic khớp với server.py export_excel_key)
+            current_ans = ""
+
             if new_q.mode == 'mcq':
                 labels = ["A", "B", "C", "D", "E", "F"]
+                mcq_corrects = []
                 for i, opt in enumerate(new_q.options):
                     if i >= len(labels): break
                     new_lbl = labels[i]
-                    if opt.is_correct: final_answers.append(new_lbl)
+                    if opt.is_correct: mcq_corrects.append(new_lbl)
 
                     _process_mcq_option_format(opt, new_lbl)
+                
+                # Match Excel gốc: chỉ lấy đáp án đầu tiên cho MCQ
+                current_ans = mcq_corrects[0] if mcq_corrects else ""
             
             elif new_q.mode == 'true_false':
-                # Logic for True/False (keep original labels a, b, c...)
-                 for i, opt in enumerate(new_q.options):
-                    if opt.is_correct: final_answers.append(opt.label) # Save 'a', 'b'...
+                # Logic for True/False: Re-label after shuffle and track correct
+                # Format: Đ = Đúng, S = Sai (e.g., ĐSĐĐ means a=True, b=False, c=True, d=True)
+                labels_tf = ["a", "b", "c", "d", "e"]
+                tf_result = []
+                for i, opt in enumerate(new_q.options):
+                    if i >= len(labels_tf): break
+                    new_lbl = labels_tf[i]
+                    # Đ = correct, S = incorrect
+                    tf_result.append("Đ" if opt.is_correct else "S")
+                    # Update option label to new position (for rendering)
+                    opt.label = new_lbl
+                current_ans = "".join(tf_result)
             
-            elif new_q.mode == 'short':
-                 # For short answer, we don't shuffle (no options).
-                 pass
+            # Short Answer / Fallback (khớp với server.py)
+            if not current_ans and new_q.correct_answer_text:
+                current_ans = new_q.correct_answer_text
+            
+            # LUÔN append để giữ đúng index (như Excel gốc server.py:467)
+            final_answers.append(current_ans)
 
             # Render Stem & Options
             for el in new_q.stem_elements: _append_element(body, sect_pr, el)
@@ -132,11 +152,87 @@ def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questio
     return global_q_idx, final_answers
 
 
+def _apply_external_key(structure: ExamStructure, external_map: dict):
+    """Override is_correct flags based on external Answer Key (from Editor)."""
+    if not external_map: return
+    
+    logger.info(f"Applying External Key Map: {len(external_map)} entries.")
+    matched_count = 0
+    
+    for sec in structure.sections:
+        for q in sec.questions:
+            # Fix: Convert original_idx to string because JSON keys are always strings
+            q_idx_str = str(q.original_idx)
+            
+            # Determine Key to use
+            key_to_use = None
+            if q.content_hash and q.content_hash in external_map:
+                key_to_use = q.content_hash
+                logger.debug(f"Matched Q{q.original_idx} by HASH: {q.content_hash}")
+            elif q_idx_str in external_map:
+                key_to_use = q_idx_str
+                logger.debug(f"Matched Q{q.original_idx} by INDEX: {q_idx_str}")
+            
+            if key_to_use:
+                matched_count += 1
+                # Found an entry for this question
+                answer_value = str(external_map[key_to_use]).strip()
+                
+                # Determine if this is MCQ/TF (single letters like "A", "B,C") or Short Answer (numeric/text)
+                # Check if answer_value looks like option labels
+                is_option_answer = bool(re.match(r'^[A-Za-z](,[A-Za-z])*$', answer_value.replace(' ', '')))
+                
+                if is_option_answer and q.options:
+                    # MCQ or True/False: Set is_correct on matching options
+                    correct_lbl = answer_value.upper()
+                    targets = [x.strip() for x in correct_lbl.split(',')]
+                    
+                    # Reset all to False first
+                    for opt in q.options:
+                        opt.is_correct = False
+                        
+                    # Set True for targets
+                    for opt in q.options:
+                        clean_lbl = ""
+                        for char in opt.label:
+                            if char.isalpha():
+                                clean_lbl = char.upper()
+                                break
+                        
+                        if clean_lbl in targets:
+                             opt.is_correct = True
+                else:
+                    # Short Answer: Set correct_answer_text directly
+                    q.correct_answer_text = answer_value
+                    logger.debug(f"Q{q.original_idx}: Set Short Answer = {answer_value}")
+            else:
+                logger.debug(f"Q{q.original_idx}: No external key found.")
+
+    logger.info(f"External Key Application Complete. Matched {matched_count} questions.")
+
+
 def generate_variant_from_structure(
         source_bytes: bytes, structure: ExamStructure, seed: int, exam_code: str,
-        shuffle_questions: bool = True, shuffle_options: bool = True
+        shuffle_questions: bool = True, shuffle_options: bool = True,
+        external_answer_map: Optional[dict] = None
 ) -> Tuple[bytes, List[str]]:
     
+    # Clone structure to avoid side effects on other variants if modified?
+    # Actually structure is parsed once. If we modify it based on external map, 
+    # we should modify it ONCE before loop, or work on a copy.
+    # The external map is the TRUTH for ALL variants. So we can modify it once.
+    # BUT generators might be called in parallel or sequentially.
+    # Ideally, apply it outside this function? Or inside?
+    # If we apply it inside, we should deepcopy. 
+    # But wait, 'structure' passed here IS the template.
+    # If we modify it permanently, it's fine because the map applies to the whole job.
+    # However, safe practice: modify matching copy.
+    
+    # Optimization: If we trust the structure is fresh or reused correctly.
+    # Let's apply it if provided.
+    if external_answer_map:
+        _apply_external_key(structure, external_answer_map)
+
     target = Document(io.BytesIO(source_bytes))
     sect_pr = _clear_body_keep_sectpr(target)
     body = target.element.body
@@ -156,8 +252,5 @@ def generate_variant_from_structure(
     buf = io.BytesIO()
     target.save(buf)
     buf.seek(0)
-    
-    # Pad answers if missing
-    while len(final_answers) < (global_q_idx - 1): final_answers.append("X")
     
     return buf.getvalue(), final_answers

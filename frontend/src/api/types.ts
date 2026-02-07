@@ -14,6 +14,7 @@ export interface SubmitJobRequest {
     jobId: string;
     fileKey: string;
     numVariants?: number;
+    rawText?: string;
 }
 
 // === RESPONSE TYPES ===
@@ -41,6 +42,7 @@ export interface JobStatusResponse {
 export interface PreviewData {
     raw_text: string;
     assets_map: Record<string, AssetItem>;
+    question_count: number;
 }
 
 export interface PreviewResponse {
