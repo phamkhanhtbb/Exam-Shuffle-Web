@@ -11,7 +11,8 @@ QUESTION_PATTERN = re.compile(r"^\s*(?:\[ID:[^\]]*\]\s*)?(?:Câu|Bai|Bài)\s+(\d
 OPTION_START_PATTERN = re.compile(r"^\s*(\*?)([A-H])\s*[\.\)]\s*")
 # Improved: Capture asterisk before OR after the letter (for *A. and A.* formats)
 # Group 1: Asterisk before, Group 2: Letter, Group 3: Asterisk after
-INLINE_OPTION_PATTERN = re.compile(r"(?:^|\s)(\*?)([A-H])[\.\)](\*?)")
+# FIX: Only exclude digits before space (e.g., "2,5 A."), allow dots/commas (e.g., "đặc. B.")
+INLINE_OPTION_PATTERN = re.compile(r"(?:^|(?<![0-9])\s)(\*?)([A-H])[\.\)](\*?)")
 # Fix: Limit sub-options to a-d (standard) and ONLY ')' as requested.
 SUB_OPTION_PATTERN = re.compile(r"^\s*(\*?)([a-d])\s*\)\s*")
 END_NOTE_PATTERN = re.compile(r"^\s*[-]*\s*(HẾT|GIÁM THỊ|GHI CHÚ)\s*[-]*", re.IGNORECASE)

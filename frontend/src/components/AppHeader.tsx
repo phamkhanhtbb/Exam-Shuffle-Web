@@ -1,4 +1,4 @@
-import { X, RefreshCw, Play, FileSpreadsheet } from 'lucide-react';
+import { X, RefreshCw, Play } from 'lucide-react';
 
 interface AppHeaderProps {
     fileName: string;
@@ -7,7 +7,6 @@ interface AppHeaderProps {
     onNumVariantsChange: (value: number) => void;
     onReset: () => void;
     onSubmit: () => void;
-    onExportKey: () => void;
 }
 
 const AppHeader: React.FC<AppHeaderProps> = ({
@@ -17,7 +16,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     onNumVariantsChange,
     onReset,
     onSubmit,
-    onExportKey,
 }) => {
     return (
         <header className="app-header slide-down">
@@ -43,16 +41,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({
             </div>
 
             <div className="flex items-center gap-4">
-                <button
-                    onClick={onExportKey}
-                    disabled={isProcessing}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm transition-all"
-                    title="Xuất Excel từ nội dung hiện tại"
-                >
-                    <FileSpreadsheet size={18} />
-                    <span>Xuất Excel Gốc</span>
-                </button>
-
                 <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
                     <span className="text-sm font-medium text-gray-600">Số lượng đề:</span>
                     <input

@@ -11,7 +11,7 @@ import PaneResizer from './components/PaneResizer';
 import ProcessingOverlay from './components/ProcessingOverlay';
 
 // Import React Query hooks
-import { useCreateJob, useJobStatus, usePreviewExam, useExportKey } from './hooks';
+import { useCreateJob, useJobStatus, usePreviewExam } from './hooks';
 import { UploadJob } from './types';
 
 function App() {
@@ -20,18 +20,6 @@ function App() {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{ raw_text: string; assets_map: AssetMap, question_count: number } | null>(null);
   const [error, setError] = useState<string>('');
-
-  // Computed: Real-time question count from text
-  const [editorQuestionCount, setEditorQuestionCount] = useState<number>(0);
-
-  useEffect(() => {
-    if (previewData?.raw_text) {
-      // Count lines starting with "Câu" or "Bai"
-      // Regex must match backend parser: ^\s*(Câu|Bai|Bài)\s+\d+
-      const matches = previewData.raw_text.match(/^\s*(?:Câu|Bai|Bài)\s+\d+/gim);
-      setEditorQuestionCount(matches ? matches.length : 0);
-    }
-  }, [previewData?.raw_text]);
 
   // Interaction State
   const [correctAnswers, setCorrectAnswers] = useState<Map<number, string>>(new Map());
@@ -50,7 +38,7 @@ function App() {
   // React Query hooks
   const { createJob, isLoading: isCreatingJob } = useCreateJob();
   const previewMutation = usePreviewExam();
-  const exportKeyMutation = useExportKey();
+
 
   // Auto-polling job status
   const { data: jobStatusData } = useJobStatus(currentJobId, {
@@ -188,11 +176,7 @@ function App() {
     }
   };
 
-  const handleExportKey = () => {
-    if (previewData?.raw_text) {
-      exportKeyMutation.mutate(previewData.raw_text);
-    }
-  };
+
 
   // --- INTERACTION HANDLERS ---
   const handleLineClick = useCallback((lineNumber: number) => {
@@ -420,7 +404,6 @@ function App() {
           onNumVariantsChange={setNumVariants}
           onReset={handleReset}
           onSubmit={handleSubmit}
-          onExportKey={handleExportKey}
         />
       )}
 
@@ -433,16 +416,6 @@ function App() {
             className="workspace-wrapper flex w-full h-full bg-gray-100 overflow-hidden animate-expand"
             ref={containerRef}
           >
-            {/* WARNING BANNER */}
-            {previewData && (editorQuestionCount !== previewData.question_count) && (
-              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 shadow-lg rounded flex items-center gap-3 animate-bounce-in">
-                <div className="font-bold text-lg">⚠️ Cảnh báo lệch câu!</div>
-                <div>
-                  <p>Hệ thống tìm thấy <b>{editorQuestionCount}</b> câu trong văn bản, nhưng file gốc có <b>{previewData.question_count}</b> câu.</p>
-                  <p className="text-sm">Vui lòng kiểm tra các dòng "Câu..." để đảm bảo chúng nằm riêng biệt trên một dòng, tránh lỗi "X".</p>
-                </div>
-              </div>
-            )}
 
             <PreviewPanel
               width={leftWidth}

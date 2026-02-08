@@ -26,9 +26,11 @@ const highlightSyntax = (text: string): string => {
     );
 
     // A., B., C., D. (and *A., a., etc.) answers - Red
-    // Match start of line OR whitespace preceding, then optional *, then letter, then dot or paren
+    // Match start of line OR whitespace NOT preceded by digit
+    // FIX: Only exclude when digit is IMMEDIATELY before space (e.g., "2,5 A."), 
+    // but allow dot/comma before space (e.g., "đặc. B." is valid inline option)
     html = html.replace(
-        /(\s|^)(\*?[A-D][.)])/gim,
+        /((?<![0-9])\s|^)(\*?[A-D][.)])/gim,
         '$1<span class="text-red-500 font-bold">$2</span>'
     );
 
