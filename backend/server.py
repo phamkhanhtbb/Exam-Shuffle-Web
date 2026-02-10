@@ -46,7 +46,11 @@ app = FastAPI(
     description="API for exam shuffling and processing",
     version="2.0.0"
 )
-
+origins = [
+    "http://localhost:3000",
+    "https://trondeonline.me",
+    "https://www.trondeonline.me"
+]
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,

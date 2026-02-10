@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE_URL = 'https://api.trondeonline.me';
 
 // Create Axios instance with default config
 const apiClient: AxiosInstance = axios.create({
@@ -44,11 +44,11 @@ apiClient.interceptors.response.use(
 
             // Extract friendly error message if available
             if (data && data.detail) {
-                 // Return a new Error object with the friendly message
-                 // This allows UI code to simply display err.message
-                 const friendlyError = new Error(data.detail);
-                 (friendlyError as any).originalError = error;
-                 return Promise.reject(friendlyError);
+                // Return a new Error object with the friendly message
+                // This allows UI code to simply display err.message
+                const friendlyError = new Error(data.detail);
+                (friendlyError as any).originalError = error;
+                return Promise.reject(friendlyError);
             }
         } else if (error.request) {
             console.error('[API] Network error - no response received');
