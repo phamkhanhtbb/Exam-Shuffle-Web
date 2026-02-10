@@ -87,11 +87,17 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
     """Quét đáp án từ một list các block (dùng cho phần ĐÁP ÁN bị cắt ra)"""
     answers_map = {}
     q_pat = re.compile(r"^\s*(?:Câu)?\s*(\d+)[\.:]?\s*$")
-    a_pat = re.compile(r"^\s*([A-D])\s*$")
+    # MCQ: Single letter A-D
+    a_pat_mcq = re.compile(r"^\s*([A-D])\s*$")
+    # TF: Pattern like ĐDSS, SDSD, ĐSĐS (4 chars of Đ/D/S), allowing spaces
+    # Đ = Đúng (True), D = Đúng (True), S = Sai (False)
+    a_pat_tf = re.compile(r"^\s*([ĐDS](?:\s*[ĐDS]){3})\s*$", re.IGNORECASE)
 
     # Regex for text-based answers: "1. A", "1: A", "1 A", "Câu 1: A"
     # Capture Group 1: Question Num, Group 2: Answer Letter
     text_ans_pat = re.compile(r"(?:Câu|Bài)?\s*(\d+)[\.:\s-]*([A-D])\b", re.IGNORECASE)
+
+
 
     for kind, block in blocks:
         if kind == 'tbl':
@@ -104,18 +110,54 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                 valid_pairs = 0
                 temp_row_map = {}
                 min_cells = min(len(row_q.cells), len(row_a.cells))
+                # Track numbering restarts within a single table row
+                prev_raw_q = 0       # Previous raw question number (before offset)
+                offset_within = 0    # Accumulated offset from restarts
                 for c in range(min_cells):
                     txt_q = row_q.cells[c].text.strip()
                     txt_a = row_a.cells[c].text.strip()
                     q_match = q_pat.match(txt_q)
-                    a_match = a_pat.match(txt_a)
-                    if q_match and a_match:
+                    a_match_mcq = a_pat_mcq.match(txt_a)
+                    a_match_tf = a_pat_tf.match(txt_a)
+                    if q_match and (a_match_mcq or a_match_tf):
                         try:
-                            temp_row_map[int(q_match.group(1))] = a_match.group(1).upper()
+                            q_num = int(q_match.group(1))
+                            # Detect numbering restart (e.g., 1,2,3,4,1,2,3...)
+                            if q_num <= prev_raw_q and prev_raw_q > 0:
+                                offset_within += prev_raw_q
+                            prev_raw_q = q_num
+                            actual_q = q_num + offset_within
+                            if a_match_mcq:
+                                temp_row_map[actual_q] = a_match_mcq.group(1).upper()
+                            else:
+                                # TF format: store as-is but remove spaces (e.g., "Đ D S S" -> "ĐDSS")
+                                raw_tf = a_match_tf.group(1).upper()
+                                temp_row_map[actual_q] = re.sub(r'\s+', '', raw_tf)
                             valid_pairs += 1
-                        except:
+                        except Exception:
                             pass
-                if valid_pairs >= 5:
+                    elif q_match and txt_a:
+                        # Short answer: any non-empty text in the answer row
+                        # In horizontal matrix layout, we trust the structure:
+                        # row_q has question numbers, row_a has answers
+                        try:
+                            q_num = int(q_match.group(1))
+                            # Detect numbering restart
+                            if q_num <= prev_raw_q and prev_raw_q > 0:
+                                offset_within += prev_raw_q
+                            prev_raw_q = q_num
+                            actual_q = q_num + offset_within
+                            temp_row_map[actual_q] = txt_a
+                            valid_pairs += 1
+                        except Exception:
+                            pass
+                if valid_pairs >= 1:
+                    # Offset keys to avoid overwriting previous table's answers
+                    if answers_map and temp_row_map:
+                        overlap = set(answers_map.keys()) & set(temp_row_map.keys())
+                        if overlap:
+                            offset = max(answers_map.keys())
+                            temp_row_map = {k + offset: v for k, v in temp_row_map.items()}
                     answers_map.update(temp_row_map)
                     continue
 
@@ -124,14 +166,36 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
             idx = 0
             while idx < len(cells) - 1:
                 curr, nxt = cells[idx], cells[idx + 1]
-                q_match, a_match = q_pat.match(curr), a_pat.match(nxt)
-                if q_match and a_match:
+                q_match = q_pat.match(curr)
+                a_match_mcq = a_pat_mcq.match(nxt)
+                a_match_tf = a_pat_tf.match(nxt)
+                if q_match and (a_match_mcq or a_match_tf):
                     try:
                         q_num = int(q_match.group(1))
                         if q_num not in answers_map:
-                            answers_map[q_num] = a_match.group(1).upper()
+                            if a_match_mcq:
+                                answers_map[q_num] = a_match_mcq.group(1).upper()
+                            else:
+                                raw_tf = a_match_tf.group(1).upper()
+                                answers_map[q_num] = re.sub(r'\s+', '', raw_tf)
                         idx += 2
-                    except:
+                    except Exception:
+                        idx += 1
+                elif q_match and nxt:
+                    # Short answer: any non-empty text
+                    # Skip only if nxt looks like a small question number (1-2 digits)
+                    # to avoid pairing consecutive question numbers
+                    nxt_stripped = nxt.strip()
+                    is_small_qnum = bool(re.match(r'^\d{1,2}$', nxt_stripped))
+                    if not is_small_qnum:
+                        try:
+                            q_num = int(q_match.group(1))
+                            if q_num not in answers_map:
+                                answers_map[q_num] = nxt
+                            idx += 2
+                        except Exception:
+                            idx += 1
+                    else:
                         idx += 1
                 else:
                     idx += 1
@@ -149,11 +213,14 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                         # Avoid overwriting if already found? Or Overwrite?
                         # Usually last wins or first wins. Let's update.
                         answers_map[q_num] = a_str.upper()
-                    except:
+                    except Exception:
                         pass
     
+    
     if answers_map:
-        pass
+        # Use repr to safely print Vietnamese chars
+        safe_answers = {k: repr(v) for k, v in sorted(answers_map.items())[:25]}
+
     return answers_map
 
 
@@ -194,7 +261,7 @@ def _parse_mcq_options(chunk_elements: List[Tuple[str, object]]) -> List[OptionB
                  try:
                      # logger.debug(f"Found Vertical Option: {letter}")
                      pass
-                 except: pass
+                 except Exception: pass
 
                  opt_indices.append((idx, letter, asterisk == '*'))
     
@@ -446,8 +513,9 @@ def _parse_questions_in_range(blocks: List[Tuple[str, object]]) -> List[Question
     return questions
 
 
-def parse_exam_template(source_bytes: bytes) -> ExamStructure:
-    doc = Document(io.BytesIO(source_bytes))
+def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
+    if doc is None:
+        doc = Document(io.BytesIO(source_bytes))
     all_blocks = list(_iter_block_items(doc))
 
     # 1. Tách phần "ĐÁP ÁN" (để lấy dữ liệu và XÓA khỏi đề thi)
@@ -537,7 +605,7 @@ def parse_exam_template(source_bytes: bytes) -> ExamStructure:
             if kind == 'tbl':
                 # Thử extract từ bảng này
                 mini_map = _extract_answers_from_blocks([(kind, block)])
-                if len(mini_map) >= 5:  # Ngưỡng tin cậy: bảng có >5 đáp án
+                if len(mini_map) >= 1:  # Ngưỡng tin cậy: bảng có >=1 đáp án (hạ từ 5 để bắt bảng nhỏ)
                     footer_answers.update(mini_map)
                     # KHÔNG thêm vào clean_footer -> XÓA
                     continue
@@ -588,16 +656,62 @@ def parse_exam_template(source_bytes: bytes) -> ExamStructure:
         raise EmptyQuestionError("Không tìm thấy bất kỳ câu hỏi nào (bắt đầu bằng 'Câu', 'Bài').")
 
     # 6. Merge đáp án từ bảng vào câu hỏi
+    # TF format detection: 4 chars of Đ/D/S (e.g., ĐDSS, SDSD), allowing spaces
+    tf_answer_pat = re.compile(r'^\s*[ĐDS](?:\s*[ĐDS]){3}\s*$', re.IGNORECASE)
+    # Mapping: a=0, b=1, c=2, d=3
+    tf_label_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
+    
     if table_answers:
+        # Use a global sequential counter to map questions to answer key positions
+        # Answer key uses sequential numbering: 1, 2, 3... 18, 19, 20, 21...
+        # Questions in Part 2 may restart at "Câu 1", "Câu 2"... but should map to 19, 20...
+        global_q_idx = 0
+        
         for sec in structure.sections:
             for q in sec.questions:
-                if q.original_idx in table_answers:
-                    correct_char = table_answers[q.original_idx]
-                    for opt in q.options:
-                        if opt.label.upper().startswith(correct_char):
-                            opt.is_correct = True
+                global_q_idx += 1
+                
+                # Try to find answer by global index first, then by original_idx
+                answer_val = None
+                if global_q_idx in table_answers:
+                    answer_val = table_answers[global_q_idx]
+                elif q.original_idx in table_answers:
+                    answer_val = table_answers[q.original_idx]
+                
+                if answer_val:
+                    # Check if this is TF format (4 chars of Đ/D/S)
+                    if tf_answer_pat.match(answer_val):
+                        # Clean spaces (e.g. "Đ D S S" -> "ĐDSS")
+                        clean_val = re.sub(r'\s+', '', answer_val)
+                        
+                        # TF Answer: Map each char to corresponding option
+                        # with open("backend_debug_log.txt", "a", encoding="utf-8") as f:
+                        #     f.write(f"[DEBUG] TF Q{global_q_idx} (orig={q.original_idx}): ans={repr(clean_val)} (raw={repr(answer_val)})\n")
+                        answer_val = clean_val # Use cleaned value below
+                        for opt in q.options:
+                            lbl = opt.label.lower()
+                            if lbl in tf_label_map:
+                                idx = tf_label_map[lbl]
+                                if idx < len(answer_val):
+                                    char = answer_val[idx].upper()
+                                    # D or \u0110 = True, S = False
+                                    opt.is_correct = (char == '\u0110' or char == 'D')
+                                    # with open("backend_debug_log.txt", "a", encoding="utf-8") as f:
+                                    #     f.write(f"[DEBUG]   opt {repr(opt.label)} -> idx={idx} char={repr(char)} -> correct={opt.is_correct}\n")
+                    else:
+                        # Check if this is a single MCQ letter (A-D)
+                        if re.match(r'^\s*[A-D]\s*$', answer_val, re.IGNORECASE):
+                            # MCQ: Single letter answer
+                            correct_char = answer_val.strip().upper()
+                            for opt in q.options:
+                                if opt.label.upper().startswith(correct_char):
+                                    opt.is_correct = True
+                                else:
+                                    opt.is_correct = False
                         else:
-                            opt.is_correct = False
+                            # Short Answer: Numeric or text value (e.g., "9,33", "6080")
+                            # Store as correct_answer_text for short answer questions
+                            q.correct_answer_text = answer_val
     
     if not table_answers and not footer_answers:
          # Check if any question has answers marked inline (underline/red)

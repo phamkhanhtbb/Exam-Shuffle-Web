@@ -29,6 +29,7 @@ class DocxSerializer:
         self.math_count = 0
         self.answer_map = answer_map or {}
         self.current_q_num = 0
+        self.global_q_counter = 0  # Sequential counter across all parts for answer_map lookup
         
         # Initialize processors
         self.image_processor = ImageProcessor()
@@ -46,13 +47,15 @@ class DocxSerializer:
         self.q_num_pattern = re.compile(r"^\s*(?:Câu|Bài)\s+(\d+)", re.IGNORECASE)
         # Regex to detect Option Start: A. B. ...
         self.opt_pattern = re.compile(r"^\s*([A-D])[\.\)]", re.IGNORECASE)
+        # Pattern for consecutive bold tags in _clean_bold_labels (compiled once)
+        self.bold_chain_pattern = re.compile(r"((?:\[!b:[^\]]+\]\s*)+)")
 
     def _get_image_data(self, blip_id):
         """Lấy binary data của ảnh từ rId"""
         try:
             part = self.doc.part.related_parts[blip_id]
             return part.blob
-        except:
+        except Exception:
             return None
 
     def _is_label(self, text):
@@ -64,7 +67,6 @@ class DocxSerializer:
     def _process_run(self, run, paragraph) -> str:
         """Xử lý từng Run: Check BOLD, IMAGE, MATH"""
         text = run.text
-        xml_str = run._element.xml
 
         # 1. Xử lý ẢNH (Drawing)
         drawings = run._element.findall('.//w:drawing', namespaces=nsmap)
@@ -98,8 +100,10 @@ class DocxSerializer:
                         return f"[img:${img_id}$]"
 
         # 2. Xử lý MATH
-        # Delegate to MathProcessor
-        if "m:oMath" in xml_str or "w:object" in xml_str:
+        # Use findall instead of serializing XML to string (much faster)
+        # Short-circuit: skip second findall if first already found
+        if run._element.findall('.//m:oMath', namespaces=nsmap) or \
+           run._element.findall('.//w:object', namespaces=nsmap):
             self.math_count += 1
             math_id = f"mathtype_{self.math_count}"
             
@@ -122,7 +126,7 @@ class DocxSerializer:
                 "type": "math",
                 "latex": latex_str,
                 "src": img_src,  # Fallback image for MathType
-                "placeholder": "[Công thức]"
+                "placeholder": f"[{math_id}]"
             }
             return f"[!m:${math_id}$]"
 
@@ -141,7 +145,6 @@ class DocxSerializer:
         """
         # Pattern: Tìm chuỗi các tag [!b:...] đứng cạnh nhau (có thể có space ở giữa các tag)
         # Group 1: Toàn bộ chuỗi match
-        pattern = re.compile(r"((?:\[!b:[^\]]+\]\s*)+)")
 
         def replacer(match):
             full_str = match.group(1)
@@ -155,7 +158,7 @@ class DocxSerializer:
             else:
                 return full_str  # Giữ nguyên format in đậm
 
-        return pattern.sub(replacer, text)
+        return self.bold_chain_pattern.sub(replacer, text)
 
     def _process_inline_latex_text(self, text):
         """
@@ -164,8 +167,7 @@ class DocxSerializer:
         """
         if '$' not in text:
             return text
-            
-        import re
+        
         # 1. Mask existing math assets
         existing_tags = []
         def mask_tag(match):
@@ -219,16 +221,15 @@ class DocxSerializer:
         # These are direct children of the paragraph, not inside runs
         para_xml = paragraph._element
         
+        # Pre-build map: element -> Run (avoid O(n²) nested loop)
+        run_map = {id(run._element): run for run in paragraph.runs}
+
         # Process all children of paragraph element in order
         for child in para_xml:
             tag = etree.QName(child.tag).localname if child.tag else ''
             
             # 1. Handle oMath/oMathPara (MathProcessor)
             if tag in ('oMathPara', 'oMath'):
-                # For oMathPara, we need to find internal oMaths or treat the whole thing?
-                # omml_to_latex handles oMathPara wrapping.
-                # But here we stick to the pattern of one asset per math object
-                
                 # MathProcessor.process_omml_element handles the conversion
                 latex_str = self.math_processor.process_omml_element(child)
                 
@@ -238,17 +239,15 @@ class DocxSerializer:
                     self.assets[math_id] = {
                         "type": "math",
                         "latex": latex_str,
-                        "placeholder": "[Công thức]"
+                        "placeholder": f"[{math_id}]"
                     }
                     line_content += f"[!m:${math_id}$]"
             
             # 2. Handle runs (text, images, inline math)
             elif tag == 'r':
-                # Find the corresponding run in paragraph.runs by matching XML element
-                for run in paragraph.runs:
-                    if run._element is child:
-                        line_content += self._process_run(run, paragraph)
-                        break
+                run = run_map.get(id(child))
+                if run:
+                    line_content += self._process_run(run, paragraph)
 
         # Check for inline LaTeX text ($...$) in the full combined line
         line_content = self._process_inline_latex_text(line_content)
@@ -264,29 +263,56 @@ class DocxSerializer:
         if q_match:
             try:
                 self.current_q_num = int(q_match.group(1))
-            except:
+                self.global_q_counter += 1  # Increment global counter for each new question
+            except Exception:
                 pass
         
         # 2. Check if this is an Option line for the current question
-        if self.current_q_num and self.current_q_num in self.answer_map:
-            correct_char = self.answer_map[self.current_q_num] # e.g. "A"
+        # Use global_q_counter for lookup to match continuous answer key numbering
+        if self.global_q_counter and self.global_q_counter in self.answer_map:
+            correct_val = self.answer_map[self.global_q_counter] # e.g. "A" or "a,b" for TF
+            
+            # Handle comma-separated values (for TF questions)
+            correct_chars = [c.strip().upper() for c in correct_val.split(',')]
             
             opt_match = self.opt_pattern.match(clean_text)
             if opt_match:
                 opt_char = opt_match.group(1).upper()
-                if opt_char == correct_char.upper():
+                if opt_char in correct_chars:
                     # MARK IT!
                     # Only mark if not already marked with *
-                    if not line_content.strip().startswith("*"):
-                        # Prepend * to line_content
-                        # Be careful with leading spaces or tags
-                        # Just naive prepend
-                        line_content = "*" + line_content
+                    if not re.search(r'\*' + opt_char, line_content, re.IGNORECASE):
+                        # Insert * directly before the option letter (A, B, C, D...)
+                        # Match: (space or start)(Letter)(. or ))
+                        line_content = re.sub(
+                            r'(^|\s)(' + opt_char + r')([.\)])',
+                            r'\1*\2\3',
+                            line_content,
+                            count=1,
+                            flags=re.IGNORECASE
+                        )
 
         return line_content
 
     def _process_table(self, table) -> str:
-        """Chuyển bảng thành format [* Col | Col *]"""
+        """
+        Chuyển bảng thành format phù hợp:
+        - Layout table: Flatten thành text bình thường
+        - Data table: Format [* Col | Col *]
+        
+        Data table conditions (bảng số liệu):
+        - >= 2 rows VÀ >= 3 columns (horizontal data table)
+        - HOẶC >= 3 rows VÀ >= 2 columns (vertical data table)
+        """
+        # Check dimensions
+        num_rows = len(table.rows) if table.rows else 0
+        max_cols = max(len(row.cells) for row in table.rows) if table.rows else 0
+        
+        # Data table: significant data in both dimensions
+        # Horizontal table: 2+ rows, 3+ columns (like time series data)
+        # Vertical table: 3+ rows, 2+ columns (like comparison table)
+        is_data_table = (num_rows >= 2 and max_cols >= 3) or (num_rows >= 3 and max_cols >= 2)
+        
         lines = []
         for row in table.rows:
             cells_txt = []
@@ -294,8 +320,17 @@ class DocxSerializer:
                 # _process_paragraph đã bao gồm logic clean label & auto-mark
                 cell_content = " ".join([self._process_paragraph(p) for p in cell.paragraphs])
                 cells_txt.append(cell_content.strip())
-            row_str = "[* " + " | ".join(cells_txt) + " *]"
-            lines.append(row_str)
+            
+            if is_data_table:
+                # Data table: Use [* Col | Col *] format
+                row_str = "[* " + " | ".join(cells_txt) + " *]"
+                lines.append(row_str)
+            else:
+                # Layout table: Just output cell content as regular text
+                for txt in cells_txt:
+                    if txt.strip():
+                        lines.append(txt)
+        
         return "\n".join(lines)
 
     def serialize(self) -> dict:

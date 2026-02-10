@@ -39,7 +39,8 @@ interface QuestionData {
 type ParsedBlock =
   | { type: 'part-header1' | 'part-header2' | 'part-header3', id: string, content: string }
   | { type: 'question', id: string, data: QuestionData }
-  | { type: 'text', id: string, content: string };
+  | { type: 'text', id: string, content: string }
+  | { type: 'table', id: string, rows: string[][] };
 
 // --- Constants & Helpers ---
 // Allow optional [ID:xxx] prefix before Câu
@@ -95,6 +96,22 @@ const isEndMarker = (line: string): boolean => {
   const stripped = trimmed.replace(/\[!b:/g, '').replace(/\]/g, '');
   const upper = stripped.toUpperCase();
   return /^[-=\s]*HẾT[-=\s]*$/.test(upper);
+};
+
+// Table Detection: Format is [* Cell1 | Cell2 | Cell3 *]
+// Backend format: "[* " + cells.join(" | ") + " *]"
+const isTableRow = (line: string): boolean => {
+  const trimmed = line.trim();
+  // More flexible: starts with [* (with optional space) and ends with *]
+  return /^\[\*\s/.test(trimmed) && /\s\*\]$/.test(trimmed);
+};
+
+const parseTableRow = (line: string): string[] => {
+  // Remove [* and *] markers (with spaces)
+  let content = line.trim();
+  content = content.replace(/^\[\*\s*/, '').replace(/\s*\*\]$/, '');
+  // Split by | and clean each cell
+  return content.split('|').map(cell => cleanContentText(cell.trim()));
 };
 
 // Answer Pattern Detection Methods (Pure Logic)
@@ -210,6 +227,17 @@ const parseDocumentBlocks = (rawText: string): ParsedBlock[] => {
       i++; continue;
     }
 
+    // Table Detection: Group consecutive table rows
+    if (isTableRow(trimmedLine)) {
+      const tableRows: string[][] = [];
+      while (i < lines.length && isTableRow(lines[i].trim())) {
+        tableRows.push(parseTableRow(lines[i]));
+        i++;
+      }
+      blocks.push({ type: 'table', id: `tbl-${i}`, rows: tableRows });
+      continue;
+    }
+
     // Header Detection
     if (isPart1Header(trimmedLine)) {
       currentPart = 1;
@@ -270,20 +298,35 @@ const parseDocumentBlocks = (rawText: string): ParsedBlock[] => {
           }));
           i++;
         }
-        // PART 2: Lowercase Answers Only (a, b, c, d)
-        else if (currentPart === 2 && hasLowercaseAnswerPattern(currTrimmed)) {
-          const extracted = extractLowercaseAnswers(currTrimmed);
-          extracted.forEach(a => lowAnswers.push({
-            letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: i + 1
-          }));
+        // PART 2: Both uppercase (A, B, C, D) and lowercase (a, b, c, d) treated as TF options
+        else if (currentPart === 2 && (hasLowercaseAnswerPattern(currTrimmed) || hasUppercaseAnswerPattern(currTrimmed))) {
+          // Check lowercase first, then uppercase
+          if (hasLowercaseAnswerPattern(currTrimmed)) {
+            const extracted = extractLowercaseAnswers(currTrimmed);
+            extracted.forEach(a => lowAnswers.push({
+              letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: i + 1
+            }));
+          } else {
+            // Uppercase in Part 2 - keep original letter for click handler compatibility
+            const extracted = extractUppercaseAnswers(currTrimmed);
+            extracted.forEach(a => lowAnswers.push({
+              letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: i + 1
+            }));
+          }
           i++;
         } else {
           // Content line
           // Should we check for Uppercase in Part 2? Usually no.
           // Should we check for Lowercase in Part 1? NO (This fixes Q2 issue).
-          const cleaned = cleanContentText(currLine);
-          if (cleaned.trim() && !isJustMarker(cleaned.trim())) {
-            qContentLines.push(cleaned);
+
+          // Preserve table rows with special marker
+          if (isTableRow(currTrimmed)) {
+            qContentLines.push(`[TABLE_ROW]${currTrimmed}`);
+          } else {
+            const cleaned = cleanContentText(currLine);
+            if (cleaned.trim() && !isJustMarker(cleaned.trim())) {
+              qContentLines.push(cleaned);
+            }
           }
           i++;
         }
@@ -346,6 +389,28 @@ export const PreviewRenderer: React.FC<PreviewRendererProps> = ({
           return (
             <div key={block.id} className="mb-2 leading-relaxed text-justify">
               {parseTokens(block.content, assetsMap)}
+            </div>
+          );
+        }
+        if (block.type === 'table') {
+          return (
+            <div key={block.id} className="mb-4 overflow-x-auto">
+              <table className="min-w-full border-collapse border border-gray-300">
+                <tbody>
+                  {block.rows.map((row, rowIdx) => (
+                    <tr key={rowIdx} className={rowIdx === 0 ? 'bg-gray-100 font-semibold' : ''}>
+                      {row.map((cell, cellIdx) => (
+                        <td
+                          key={cellIdx}
+                          className="border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          {parseTokens(cell, assetsMap)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           );
         }
@@ -444,11 +509,60 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           onClick={handleClick}
           title="Click để xem trong editor"
         >
-          {contentLines.map((line, idx) => (
-            <div key={idx} className="leading-relaxed mb-1 last:mb-0">
-              {parseTokens(line, assetsMap)}
-            </div>
-          ))}
+          {(() => {
+            // Group table rows and render them inline
+            const elements: React.ReactNode[] = [];
+            let tableBuffer: string[][] = [];
+
+            const flushTable = () => {
+              if (tableBuffer.length > 0) {
+                elements.push(
+                  <div key={`table-${elements.length}`} className="my-2 overflow-x-auto">
+                    <table className="min-w-full border-collapse border border-gray-300">
+                      <tbody>
+                        {tableBuffer.map((row, rowIdx) => (
+                          <tr key={rowIdx} className={rowIdx === 0 ? 'bg-gray-100 font-semibold' : ''}>
+                            {row.map((cell, cellIdx) => (
+                              <td key={cellIdx} className="border border-gray-300 px-3 py-2 text-sm">
+                                {parseTokens(cell, assetsMap)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+                tableBuffer = [];
+              }
+            };
+
+            contentLines.forEach((line, idx) => {
+              if (line.startsWith('[TABLE_ROW]')) {
+                // Extract actual table row content and parse cells
+                const rowContent = line.replace('[TABLE_ROW]', '').trim();
+                const cells = rowContent
+                  .replace(/^\[\*\s*/, '').replace(/\s*\*\]$/, '')
+                  .split('|')
+                  .map(cell => cleanContentText(cell.trim()));
+                tableBuffer.push(cells);
+              } else {
+                // Flush any pending table
+                flushTable();
+                // Render normal content line
+                elements.push(
+                  <div key={idx} className="leading-relaxed mb-1 last:mb-0">
+                    {parseTokens(line, assetsMap)}
+                  </div>
+                );
+              }
+            });
+
+            // Flush remaining table rows
+            flushTable();
+
+            return elements;
+          })()}
         </div>
       )}
 
@@ -576,10 +690,8 @@ const parseTokens = (text: string, assetsMap: AssetMap): React.ReactNode => {
           return <span key={index} className="inline-block px-2 py-0.5 rounded bg-fuchsia-50 border border-fuchsia-200 mx-0.5"><span className="text-fuchsia-600 font-mono text-sm">{asset.latex}</span></span>;
         }
       }
-      if (asset?.src) {
-        return <img key={index} src={asset.src} alt="math" className="inline-block h-[1.2em] align-middle mx-0.5" style={{ verticalAlign: 'middle' }} />;
-      }
-      return <span key={index} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-fuchsia-50 border border-fuchsia-200 mx-0.5" title={`MathType ID: ${id}`}><span className="text-[10px] font-bold text-white bg-fuchsia-500 px-1 rounded">CT</span><span className="text-fuchsia-700 font-mono text-sm">{id}</span></span>;
+      // No LaTeX available → show mathtype_N placeholder text
+      return <span key={index} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-fuchsia-50 border border-fuchsia-200 mx-0.5" title={`MathType ID: ${id}`}><span className="text-fuchsia-700 font-mono text-sm">{id}</span></span>;
     }
     return <span key={index}>{part}</span>;
   });

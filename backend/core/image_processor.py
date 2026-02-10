@@ -20,6 +20,27 @@ except ImportError:
 
 
 class ImageProcessor:
+    # Skip WMF/EMF conversion for preview performance
+    # WMF/EMF conversion using Windows GDI is extremely slow (~50-200ms per image)
+    # For preview purposes, we show a placeholder instead
+    SKIP_WMF_EMF = True
+    
+    # Embedded placeholder SVG (inline, no external file needed)
+    # Shows a simple icon indicating "Image not available in preview"
+    WMF_EMF_PLACEHOLDER = (
+        "data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0i"
+        "NjAiIHZpZXdCb3g9IjAgMCAxMjAgNjAiPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNjAiIGZpbGw9"
+        "IiNmMGYwZjAiIHN0cm9rZT0iI2NjYyIgc3Ryb2tlLXdpZHRoPSIxIi8+PHRleHQgeD0iNjAiIHk9IjM1"
+        "IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTAiIGZp"
+        "bGw9IiM5OTkiPltIw6xuaCDhuqNuaF08L3RleHQ+PC9zdmc+"
+    )
+    # The SVG above decodes to:
+    # <svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 120 60">
+    #   <rect width="120" height="60" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+    #   <text x="60" y="35" text-anchor="middle" font-family="Arial" font-size="10" fill="#999">[Hình ảnh]</text>
+    # </svg>
+    
     def __init__(self):
         pass
 
@@ -28,12 +49,14 @@ class ImageProcessor:
         
         # Check magic bytes to detect format
         if img_bytes[:4] == b'\xd7\xcd\xc6\x9a':
-            # WMF Placeable Header
-            # print(f"[DEBUG] {img_id_for_log}: Detected WMF format")
+            # WMF Placeable Header - SKIP for performance
+            if self.SKIP_WMF_EMF:
+                return self.WMF_EMF_PLACEHOLDER
             return self._try_convert_wmf_emf(img_bytes, 'wmf', img_id_for_log)
         elif img_bytes[:4] == b'\x01\x00\x00\x00':
-            # EMF header
-            # print(f"[DEBUG] {img_id_for_log}: Detected EMF format")
+            # EMF header - SKIP for performance
+            if self.SKIP_WMF_EMF:
+                return self.WMF_EMF_PLACEHOLDER
             return self._try_convert_wmf_emf(img_bytes, 'emf', img_id_for_log)
         elif img_bytes[:8] == b'\x89PNG\r\n\x1a\n':
             # Already PNG
@@ -48,8 +71,9 @@ class ImageProcessor:
             b64_str = base64.b64encode(img_bytes).decode('utf-8')
             return f"data:image/gif;base64,{b64_str}"
         else:
-            # Unknown format, try to convert anyway
-            # print(f"[DEBUG] {img_id_for_log}: Unknown format, attempting conversion")
+            # Unknown format - also skip heavy conversion
+            if self.SKIP_WMF_EMF:
+                return self.WMF_EMF_PLACEHOLDER
             return self._try_convert_wmf_emf(img_bytes, 'unknown', img_id_for_log)
 
     def _try_convert_wmf_emf(self, img_bytes: bytes, fmt: str, img_id_for_log: str) -> str:
@@ -100,7 +124,7 @@ class ImageProcessor:
                     finally:
                         try:
                             os.unlink(tmp_path)
-                        except:
+                        except Exception:
                             pass
 
                 if not hmf or hmf == 0:

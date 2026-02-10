@@ -9,6 +9,10 @@ import asyncio
 import zipfile
 import boto3
 from docx import Document
+from docx.text.paragraph import Paragraph as DocxParagraph
+from docx.table import Table as DocxTable
+from docx.oxml.text.paragraph import CT_P
+from docx.oxml.table import CT_Tbl
 from decimal import Decimal
 from typing import Optional
 
@@ -123,20 +127,19 @@ def _render_structure(structure, serializer: DocxSerializer) -> str:
                      if t: opt_texts.append(t)
                 if opt_texts:
                     lines.append(" ".join(opt_texts))
+            
+            # Emit short answer line if correct_answer_text is available
+            if q.correct_answer_text and q.mode == 'short':
+                lines.append(f"Đáp án: {q.correct_answer_text}")
                     
     return "\n".join(lines)
 
 def _render_element(el, serializer):
-    from docx.text.paragraph import Paragraph
-    from docx.table import Table
-    from docx.oxml.text.paragraph import CT_P
-    from docx.oxml.table import CT_Tbl
-    
     if isinstance(el, CT_P):
-        para = Paragraph(el, serializer.doc)
+        para = DocxParagraph(el, serializer.doc)
         return serializer._process_paragraph(para)
     elif isinstance(el, CT_Tbl):
-        table = Table(el, serializer.doc)
+        table = DocxTable(el, serializer.doc)
         return serializer._process_table(table)
     return ""
 
@@ -347,6 +350,7 @@ async def preview_exam(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="No selected file")
 
     try:
+        t0 = time.perf_counter()
         contents = await file.read()
         file_stream = io.BytesIO(contents)
         
@@ -355,24 +359,43 @@ async def preview_exam(file: UploadFile = File(...)):
              doc = Document(file_stream)
         except Exception:
              raise HTTPException(status_code=400, detail="File không hợp lệ hoặc bị lỗi (Không phải file DOCX chuẩn)")
-             
+        
+        t1 = time.perf_counter()
+        logger.info(f"[PERF] Document open: {t1-t0:.3f}s")
+
         # 1. Parse structure (REQUIRED for ID generation)
+        # Pass pre-opened doc to avoid re-opening
         try:
-            structure = await asyncio.to_thread(parse_exam_template, contents)
+            structure = await asyncio.to_thread(parse_exam_template, contents, doc)
         except Exception as e:
             logger.error(f"Structure parsing failed: {e}")
             raise HTTPException(status_code=400, detail=f"Lỗi đọc cấu trúc đề thi: {str(e)}")
 
+        t2 = time.perf_counter()
+        logger.info(f"[PERF] Structure parsing: {t2-t1:.3f}s")
+
         # 2. Detect answers from the file structure (OPTIONAL)
         answer_map = {}
         try:
-            # Extract simple map: { q_idx: "A", ... }
+            # Extract simple map: { global_idx: "A", ... }
+            # Use global sequential counter to match continuous answer key numbering
+            # (answer key: 1-28 continuous, but questions restart per part)
+            global_q_idx = 0
             for sec in structure.sections:
                 for q in sec.questions:
-                    # Find correct option char
+                    global_q_idx += 1
+                    # Find correct option labels
                     corrects = [opt.label for opt in q.options if opt.is_correct]
                     if corrects:
-                        answer_map[q.original_idx] = corrects[0]
+                        if q.mode == 'true_false':
+                            # TF: Store all correct labels (comma-separated)
+                            answer_map[global_q_idx] = ','.join(corrects)
+                        else:
+                            # MCQ: Store first correct label
+                            answer_map[global_q_idx] = corrects[0]
+                    elif q.correct_answer_text and q.mode == 'short':
+                        # Short Answer: Store the answer text
+                        answer_map[global_q_idx] = q.correct_answer_text
             
             logger.info(f"Auto-detected {len(answer_map)} answers for marking.")
         except Exception as e:
@@ -384,6 +407,10 @@ async def preview_exam(file: UploadFile = File(...)):
         # Now using structure-based rendering to ensure ID alignment
         loop = asyncio.get_event_loop()
         raw_text = await loop.run_in_executor(None, _render_structure, structure, serializer)
+        
+        t3 = time.perf_counter()
+        logger.info(f"[PERF] Rendering: {t3-t2:.3f}s")
+        logger.info(f"[PERF] Total preview: {t3-t0:.3f}s")
         
         # Serialize assets map? DocxSerializer accumulates assets in self.assets during _process_paragraph
         # So we just take serializer.assets after running _render_structure

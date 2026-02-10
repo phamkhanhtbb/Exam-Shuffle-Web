@@ -111,6 +111,28 @@ function App() {
         const result = await previewMutation.mutateAsync(file);
         if (result.status === 'success') {
           setPreviewData(result.data);
+
+          // Initialize correctAnswers from raw text (for short answer questions)
+          const initialAnswers = new Map<number, string>();
+          const rawLines = result.data.raw_text.split('\n');
+          let currentQIndex = 0;
+          const qRegex = /(?:\[ID:[^\]]*\]\s*)?Câu\s*(\d+)/i;
+          const ansRegex = /^Đáp án:\s*(.+)/i;
+
+          for (const line of rawLines) {
+            const qMatch = line.match(qRegex);
+            if (qMatch) {
+              currentQIndex = parseInt(qMatch[1], 10);
+            }
+            const ansMatch = line.trim().match(ansRegex);
+            if (ansMatch && currentQIndex > 0) {
+              initialAnswers.set(currentQIndex, ansMatch[1].trim());
+            }
+          }
+
+          if (initialAnswers.size > 0) {
+            setCorrectAnswers(initialAnswers);
+          }
         }
       } catch (err) {
         console.error('Preview error:', err);
@@ -263,34 +285,28 @@ function App() {
 
       if (lineIdx >= 0 && lineIdx < lines.length) {
         const line = lines[lineIdx];
-        const targetLetter = letter.toLowerCase();
+        // Support both uppercase (A.) and lowercase (a)) formats
+        // Use case-insensitive matching
+        const targetLetterLower = letter.toLowerCase();
+        const targetLetterUpper = letter.toUpperCase();
 
-        // Regex to find "a)" or "*a)"
-        // We just need to toggle the * prefix for THIS letter.
-        // Be careful if multiple answers on one line (though rare for T/F).
-        // Usually T/F options are: a) ... b) ...
-
-        // Regex: Find (*?)letter) - STRICT MODE: letter + ')'
-        // We only support a-d and ) for True/False now to avoid conflicts.
-        const regex = new RegExp(`(\\*?)(${targetLetter})\\)`, 'g');
+        // Regex: Find (*?)letter[.)], case-insensitive
+        // Match formats: A. A) a. a)
+        const regex = new RegExp(`(\\*?)(${targetLetterLower}|${targetLetterUpper})([.)])`, 'gi');
 
         if (regex.test(line)) {
-          // Check if SPECIFIC option has star
-          // We need to be careful not to match *ab) if we look for *b)
-          // But with ) boundary it is safe.
-
-          const match = line.match(new RegExp(`\\*${targetLetter}\\)`));
-          const hasStar = !!match;
+          // Check if SPECIFIC option has star (case-insensitive)
+          const matchStar = line.match(new RegExp(`\\*(${targetLetterLower}|${targetLetterUpper})[.)]`, 'i'));
+          const hasStar = !!matchStar;
 
           let newLine = line;
 
           if (hasStar) {
-            // Remove star: *a) -> a)
-            newLine = newLine.replace(new RegExp(`\\*${targetLetter}\\)`, 'g'), `${targetLetter})`);
+            // Remove star: *A. -> A. or *a) -> a)
+            newLine = newLine.replace(new RegExp(`\\*(${targetLetterLower}|${targetLetterUpper})([.)])`, 'gi'), '$1$2');
           } else {
-            // Add star: a) -> *a)
-            // Use word boundary or just the letter+paren
-            newLine = newLine.replace(new RegExp(`(^|\\s)(${targetLetter})\\)`, 'g'), `$1*${targetLetter})`);
+            // Add star: A. -> *A. or a) -> *a)
+            newLine = newLine.replace(new RegExp(`(^|\\s)(${targetLetterLower}|${targetLetterUpper})([.)])`, 'gi'), '$1*$2$3');
           }
 
           if (newLine !== line) {

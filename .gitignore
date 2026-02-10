@@ -21,3 +21,10 @@ frontend/build/
 # --- IDE ---
 .idea/
 .vscode/
+
+# --- Misc ---
+*.msi
+debug_regex.js
+test_*.py
+verify_*.py
+check_server.py
