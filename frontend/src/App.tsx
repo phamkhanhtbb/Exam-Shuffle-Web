@@ -9,10 +9,23 @@ import PreviewPanel from './components/PreviewPanel';
 import EditorPanel, { EditorPanelHandle } from './components/EditorPanel';
 import PaneResizer from './components/PaneResizer';
 import ProcessingOverlay from './components/ProcessingOverlay';
+import { FileText, Code } from 'lucide-react';
 
 // Import React Query hooks
 import { useCreateJob, useJobStatus, usePreviewExam } from './hooks';
 import { UploadJob } from './types';
+
+// Mobile detection hook
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint);
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
 
 function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -34,6 +47,10 @@ function App() {
   const [leftWidth, setLeftWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Mobile state
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState<'preview' | 'editor'>('preview');
 
   // React Query hooks
   const { createJob, isLoading: isCreatingJob } = useCreateJob();
@@ -432,27 +449,53 @@ function App() {
             className="workspace-wrapper flex w-full h-full bg-gray-100 overflow-hidden animate-expand"
             ref={containerRef}
           >
+            {/* Mobile Tab Bar */}
+            {isMobile && (
+              <div className="mobile-tab-bar">
+                <button
+                  className={activeTab === 'preview' ? 'active' : ''}
+                  onClick={() => setActiveTab('preview')}
+                >
+                  <FileText size={16} /> Preview
+                </button>
+                <button
+                  className={activeTab === 'editor' ? 'active' : ''}
+                  onClick={() => setActiveTab('editor')}
+                >
+                  <Code size={16} /> Editor
+                </button>
+              </div>
+            )}
 
-            <PreviewPanel
-              width={leftWidth}
-              isLoading={previewMutation.isPending}
-              previewData={previewData}
-              onLineClick={handleLineClick}
-              onAnswerSelect={handleAnswerSelect}
-              correctAnswers={correctAnswers}
-              onTrueFalseToggle={handleTrueFalseToggle}
-              trueFalseAnswers={trueFalseAnswers}
-              onShortAnswerChange={handleShortAnswerChange} // Pass handler
-            />
+            {/* Preview Panel: visible on desktop, or when active tab on mobile */}
+            {(!isMobile || activeTab === 'preview') && (
+              <PreviewPanel
+                width={leftWidth}
+                isLoading={previewMutation.isPending}
+                previewData={previewData}
+                onLineClick={handleLineClick}
+                onAnswerSelect={handleAnswerSelect}
+                correctAnswers={correctAnswers}
+                onTrueFalseToggle={handleTrueFalseToggle}
+                trueFalseAnswers={trueFalseAnswers}
+                onShortAnswerChange={handleShortAnswerChange}
+                isMobile={isMobile}
+              />
+            )}
 
-            <PaneResizer onMouseDown={startResizing} />
+            {/* Resizer: desktop only */}
+            {!isMobile && <PaneResizer onMouseDown={startResizing} />}
 
-            <EditorPanel
-              ref={editorRef}
-              width={100 - leftWidth}
-              value={previewData?.raw_text || ''}
-              onChange={handleTextChange}
-            />
+            {/* Editor Panel: visible on desktop, or when active tab on mobile */}
+            {(!isMobile || activeTab === 'editor') && (
+              <EditorPanel
+                ref={editorRef}
+                width={100 - leftWidth}
+                value={previewData?.raw_text || ''}
+                onChange={handleTextChange}
+                isMobile={isMobile}
+              />
+            )}
           </div>
         )}
       </main>

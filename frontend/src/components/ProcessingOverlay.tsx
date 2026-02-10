@@ -66,7 +66,7 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center animate-fade-in">
-            <div className="bg-white rounded-[32px] p-8 w-[420px] shadow-2xl flex flex-col items-center text-center relative animate-scale-up">
+            <div className="bg-white rounded-[32px] p-6 sm:p-8 w-[min(90vw,420px)] shadow-2xl flex flex-col items-center text-center relative animate-scale-up">
                 {/* Nút tắt (chỉ hiện khi xong hoặc lỗi) */}
                 {!isProcessing && (currentJob?.status === 'Done' || error) && (
                     <button

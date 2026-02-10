@@ -4,6 +4,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import App from './App';
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function (registrations) {
+    for (let registration of registrations) {
+      registration.unregister();
+      console.log("Đã diệt Zombie Service Worker!");
+    }
+  });
+  // Xóa sạch bộ nhớ đệm cũ
+  caches.keys().then(function (names) {
+    for (let name of names) caches.delete(name);
+  });
+}
+
 // Create React Query client with default options
 const queryClient = new QueryClient({
   defaultOptions: {

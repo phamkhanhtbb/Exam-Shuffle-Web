@@ -1,3 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================
+   GLOBAL RESET & BASE
+   ============================================= */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -12,102 +19,169 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.app {
-  min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 24px;
-}
-
-.container {
-  max-width: 800px;
-  margin: 0 auto;
-  background-color: white;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+/* =============================================
+   APP CONTAINER & LAYOUT
+   ============================================= */
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  /* Use dvh for mobile browsers (dynamic viewport height) */
+  height: 100dvh;
   overflow: hidden;
-}
-
-.header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 32px 24px;
-  text-align: center;
-}
-
-.header h1 {
-  margin: 0 0 8px 0;
-  font-size: 32px;
-  font-weight: 700;
-}
-
-.header p {
-  margin: 0;
-  font-size: 16px;
-  opacity: 0.9;
-}
-
-.main-content {
-  padding: 32px 24px;
-}
-
-.upload-form {
-  margin-bottom: 24px;
-}
-
-.form-group {
-  margin-bottom: 24px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.number-input {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  font-size: 16px;
-  transition: border-color 0.2s;
-}
-
-.number-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.number-input:disabled {
-  background-color: #f1f5f9;
-  cursor: not-allowed;
-}
-
-.input-hint {
-  margin-top: 6px;
-  font-size: 13px;
-  color: #64748b;
-}
-
-.error-message {
-  padding: 12px 16px;
-  background-color: #fee2e2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  font-size: 14px;
-  margin-bottom: 16px;
-}
-
-.button-group {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  flex-direction: column;
+  transition: background 0.5s ease;
 }
 
+/* State: Welcome Screen */
+.app-container.mode-welcome {
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+}
+
+.welcome-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* State: Workspace (after file upload) */
+.app-container.mode-workspace {
+  background-color: #f9fafb;
+}
+
+/* =============================================
+   APP HEADER
+   ============================================= */
+.app-header {
+  height: 60px;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  z-index: 50;
+  animation: slideDown 0.4s ease-out;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-action:hover {
+  transform: translateY(-1px);
+}
+
+.btn-action:active {
+  transform: translateY(0);
+}
+
+/* =============================================
+   MAIN CONTENT & WORKSPACE
+   ============================================= */
+.main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  width: 100%;
+  position: relative;
+  /* Important for flex child scrolling */
+  min-height: 0;
+}
+
+.workspace-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  /* Important for mobile column layout */
+  min-height: 0;
+}
+
+/* =============================================
+   PREVIEW PAPER (Exam Styling)
+   ============================================= */
+.preview-paper {
+  font-family: "Times New Roman", Times, serif;
+  font-size: 13pt;
+  line-height: 1.5;
+  color: #000;
+  text-align: justify;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+  letter-spacing: normal;
+}
+
+.preview-paper img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 10px auto;
+}
+
+.preview-paper strong {
+  font-weight: bold;
+}
+
+/* =============================================
+   PANE RESIZER
+   ============================================= */
+.resizer-bar {
+  width: 12px;
+  background-color: #f3f4f6;
+  border-left: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  z-index: 50;
+}
+
+.resizer-bar:hover,
+.resizer-bar.active {
+  background-color: #6366f1;
+  border-color: #6366f1;
+}
+
+.resizer-handle {
+  width: 4px;
+  height: 30px;
+  background-color: #cbd5e1;
+  border-radius: 2px;
+}
+
+.resizer-bar:hover .resizer-handle {
+  background-color: white;
+}
+
+/* Resizing state */
+.app-container.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.app-container.resizing iframe {
+  pointer-events: none;
+}
+
+/* =============================================
+   BUTTONS (Legacy)
+   ============================================= */
 .submit-button,
 .reset-button,
 .download-button {
@@ -134,7 +208,8 @@ body {
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
-.submit-button:disabled {
+.submit-button:disabled,
+.reset-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
@@ -149,36 +224,6 @@ body {
   background-color: #e2e8f0;
 }
 
-.reset-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.result-card {
-  margin-top: 24px;
-  padding: 24px;
-  background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
-  border-radius: 12px;
-  text-align: center;
-}
-
-.result-card h3 {
-  margin: 0 0 12px 0;
-  font-size: 24px;
-  color: #065f46;
-}
-
-.result-card p {
-  margin: 8px 0;
-  color: #047857;
-  line-height: 1.6;
-}
-
-.file-info {
-  font-size: 14px;
-  margin: 16px 0;
-}
-
 .download-button {
   margin: 16px auto 0;
   background-color: #059669;
@@ -191,118 +236,12 @@ body {
   box-shadow: 0 4px 12px rgba(5, 150, 105, 0.4);
 }
 
-.download-hint {
-  font-size: 13px;
-  opacity: 0.8;
-  margin-top: 12px;
-}
-
-.footer {
-  padding: 16px 24px;
-  background-color: #f8fafc;
-  border-top: 1px solid #e2e8f0;
-  text-align: center;
-}
-
-.footer p {
-  margin: 0;
-  font-size: 13px;
-  color: #64748b;
-}
-
-@media (max-width: 640px) {
-  .app {
-    padding: 12px;
-  }
-
-  .header {
-    padding: 24px 16px;
-  }
-
-  .header h1 {
-    font-size: 24px;
-  }
-
-  .main-content {
-    padding: 24px 16px;
-  }
-
-  .button-group {
-    flex-direction: column;
-  }
-
-  .submit-button,
-  .reset-button {
-    width: 100%;
-  }
-}
-/* --- Split View Styles --- */
-.split-view-container {
-  display: flex;
-  flex-direction: row; /* Bắt buộc xếp ngang */
-  gap: 20px;
-  height: 600px; /* Chiều cao cố định để scroll */
-  margin-top: 20px;
-  border-top: 2px solid #eee;
-  padding-top: 20px;
-}
-
-.view-pane {
-  flex: 1; /* Chia đều 50-50 */
-  display: flex;
-  flex-direction: column;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  overflow: hidden;
-  background-color: white;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-
-.pane-header {
-  background-color: #f3f4f6;
-  padding: 10px 15px;
-  font-weight: bold;
-  border-bottom: 1px solid #ddd;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-/* Phần nội dung cuộn được */
-.pane-content {
-  flex: 1;
-  overflow-y: auto; /* Cho phép scroll dọc */
-  padding: 0;
-}
-
-/* Pane bên phải (Source Code) */
-.source-pane {
-  background-color: #1e1e1e;
-  color: #d4d4d4;
-}
-
-.source-editor {
-  width: 100%;
-  height: 100%;
-  background-color: #1e1e1e;
-  color: #d4d4d4;
-  border: none;
-  padding: 15px;
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 14px;
-  resize: none;
-  outline: none;
-  white-space: pre; /* Giữ nguyên định dạng dòng */
-}
-/* App.css */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Tùy chỉnh thanh cuộn cho giống IDE */
+/* =============================================
+   SCROLLBAR CUSTOMIZATION
+   ============================================= */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -310,324 +249,211 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 5px;
-  border: 2px solid transparent;
-  background-clip: content-box;
+  background: #cbd5e1;
+  border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #a8a8a8;
+  background: #94a3b8;
 }
 
-/* Dark theme scrollbar cho cột phải */
+/* Dark theme scrollbar */
 .bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #424242;
+  background: #4b5563;
 }
 
 .bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #4f4f4f;
-}
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* --- GLOBAL LAYOUT --- */
-.app-container {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  transition: background 0.5s ease;
+  background: #6b7280;
 }
 
-/* --- TRẠNG THÁI 1: WELCOME (Nền tím) --- */
-.app-container.mode-welcome {
-  /* Gradient tím giống hình ảnh yêu cầu */
-  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-}
-
-.welcome-wrapper {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-
-/* --- TRẠNG THÁI 2: WORKSPACE (Nền xám) --- */
-.app-container.mode-workspace {
-  background-color: #f3f4f6;
-}
-
-.app-header {
-  height: 70px;
-  background-color: white;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-  z-index: 50;
-  animation: slideDown 0.4s ease-out;
-}
-
-.btn-action {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.btn-action:hover {
-  transform: translateY(-1px);
-}
-
-.btn-action:active {
-  transform: translateY(0);
-}
-
-/* --- ANIMATIONS --- */
+/* =============================================
+   ANIMATIONS
+   ============================================= */
 @keyframes slideDown {
-  from { transform: translateY(-100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes fadeInUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes expandWidth {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-.fade-in { animation: fadeInUp 0.6s ease-out; }
-.animate-expand { animation: expandWidth 0.4s ease-out; }
-.animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
-.animate-bounce-in { animation: fadeInUp 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
+@keyframes scaleUp {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
 
-/* --- SCROLLBAR CUSTOMIZATION --- */
-.custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-/* Dark mode scrollbar */
-.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; }
-.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* --- GLOBAL LAYOUT --- */
-.app-container {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  transition: background 0.5s ease;
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
-.app-container.mode-welcome {
-  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-}
-.welcome-wrapper {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
+@keyframes bounceSmall {
 
-.app-container.mode-workspace {
-  background-color: #f3f4f6;
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
 }
 
-.app-header {
-  height: 70px;
-  background-color: white;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-  z-index: 50;
-  animation: slideDown 0.4s ease-out;
+.fade-in {
+  animation: fadeInUp 0.6s ease-out;
 }
 
-.btn-action {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-.btn-action:hover { transform: translateY(-1px); }
-.btn-action:active { transform: translateY(0); }
-
-/* --- ANIMATIONS --- */
-@keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@keyframes fadeInUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@keyframes expandWidth { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
-@keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-@keyframes bounceSmall { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-
-.fade-in { animation: fadeInUp 0.6s ease-out; }
-.animate-expand { animation: expandWidth 0.4s ease-out; }
-.animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
-.animate-scale-up { animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.animate-bounce-small { animation: bounceSmall 1s infinite; }
-
-/* --- SCROLLBAR --- */
-.custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; }
-.bg-\[\#1e1e1e\] .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
-.main-content {
-  flex: 1; /* Chiếm toàn bộ không gian còn lại dưới Header */
-  overflow: hidden; /* Quan trọng: Ngăn không cho khung chính tự giãn quá màn hình */
-  display: flex;
-  position: relative;
-  width: 100%;
+.animate-expand {
+  animation: expandWidth 0.4s ease-out;
 }
 
-/* Đảm bảo workspace con cũng full chiều cao */
-.workspace-wrapper {
-  width: 100%;
-  height: 100%;
-}
-/* ... Các phần cũ ... */
-
-/* --- KHẮC PHỤC LỖI FONT PREVIEW --- */
-.preview-paper {
-  /* Font chuẩn đề thi */
-  font-family: "Times New Roman", Times, serif;
-  font-size: 13pt; /* Cỡ chữ chuẩn văn bản hành chính */
-  line-height: 1.5; /* Giãn dòng dễ đọc */
-  color: #000; /* Màu đen tuyệt đối */
-  text-align: justify; /* Căn đều 2 bên */
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out;
 }
 
-/* Fix lỗi hiển thị bảng/ảnh trong preview */
-.preview-paper img {
-  max-width: 100%;
-  height: auto;
-  display: block;
-  margin: 10px auto;
+.animate-scale-up {
+  animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.preview-paper strong {
-  font-weight: bold;
+.animate-bounce-small {
+  animation: bounceSmall 1s infinite;
 }
 
-/* --- STYLE CHO THANH RESIZER --- */
-.app-container.resizing {
-  cursor: col-resize; /* Đổi con trỏ khi đang kéo */
-  user-select: none; /* Không cho bôi đen text khi đang kéo */
+.animate-bounce-in {
+  animation: fadeInUp 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
 }
 
-.workspace-wrapper {
-  display: flex;
-  width: 100%;
-  height: 100%;
-}
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* --- KHẮC PHỤC LỖI HIỂN THỊ FONT SERIF --- */
-.preview-paper {
-  /* Font chuẩn đề thi */
-  font-family: "Times New Roman", Times, serif;
-  font-size: 13pt; /* Cỡ chữ chuẩn 13 hoặc 14 */
-  line-height: 1.5;
-  color: #000; /* Màu đen tuyệt đối để tăng độ tương phản */
-
-  /* QUAN TRỌNG: Tắt khử răng cưa mờ (antialiased) của Tailwind */
-  -webkit-font-smoothing: auto;
-  -moz-osx-font-smoothing: auto;
-
-  /* Tối ưu hiển thị văn bản */
-  text-rendering: optimizeLegibility;
-  text-align: justify; /* Căn đều 2 bên lề */
-
-  /* Reset letter-spacing */
-  letter-spacing: normal;
+/* =============================================
+   MOBILE TAB BAR (for workspace tabs)
+   ============================================= */
+.mobile-tab-bar {
+  display: none;
+  /* Hidden on desktop */
 }
 
-/* Fix ảnh trong bài thi không bị vỡ layout */
-.preview-paper img {
-  max-width: 100%;
-  height: auto;
+/* =============================================
+   MOBILE RESPONSIVE (≤ 768px)
+   ============================================= */
+@media (max-width: 768px) {
+
+  /* Header - Compact */
+  .app-header {
+    height: 48px;
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  .btn-action {
+    padding: 8px 12px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  /* Workspace: stack vertically */
+  .workspace-wrapper {
+    flex-direction: column;
+  }
+
+  /* Fix Mobile Scrolling: Ensure PANEL child takes remaining height */
+  /* Exclude .mobile-tab-bar from flex:1 — it should stay at fixed height */
+  .workspace-wrapper>div:not(.mobile-tab-bar) {
+    flex: 1;
+    min-height: 0;
+    /* Critical for nested scroll */
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Mobile Tab Bar - Compact (must NOT flex-grow) */
+  .mobile-tab-bar {
+    display: flex;
+    flex-direction: row !important;
+    /* Override column from parent rule */
+    flex: none !important;
+    /* Override flex:1 from parent rule */
+    height: 38px;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+    flex-shrink: 0;
+    z-index: 30;
+  }
+
+  .mobile-tab-bar button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .mobile-tab-bar button.active {
+    color: #6366f1;
+    border-bottom-color: #6366f1;
+    background: #eef2ff;
+  }
+
+  /* Preview paper: smaller padding on mobile */
+  .preview-paper {
+    font-size: 11pt;
+  }
+
+  /* Pane Resizer: hidden on mobile */
+  .pane-resizer-desktop {
+    display: none !important;
+  }
 }
 
-/* Style cho thanh kéo (Resizer) */
-.resizer-bar {
-  width: 12px;
-  background-color: #f3f4f6;
-  border-left: 1px solid #e5e7eb;
-  border-right: 1px solid #e5e7eb;
-  cursor: col-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  z-index: 50;
-}
+/* Extra small screens (≤ 480px) */
+@media (max-width: 480px) {
+  .app-header {
+    height: 48px;
+    padding: 0 8px;
+  }
 
-.resizer-bar:hover, .resizer-bar.active {
-  background-color: #6366f1; /* Màu tím Indigo khi hover */
-  border-color: #6366f1;
-}
+  .btn-action {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
 
-.resizer-handle {
-  width: 4px;
-  height: 30px;
-  background-color: #cbd5e1;
-  border-radius: 2px;
+  .preview-paper {
+    font-size: 10pt;
+  }
 }
-
-.resizer-bar:hover .resizer-handle {
-  background-color: white;
-}
-
-/* Khi đang kéo, body không cho bôi đen text */
-.app-container.resizing {
-  cursor: col-resize;
-  user-select: none;
-}
-.app-container.resizing iframe {
-  pointer-events: none; /* Tránh iframe bắt sự kiện chuột */
-}
-
-/* Các class cũ giữ nguyên */
-.app-container { width: 100vw; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-.mode-welcome { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); }
-.mode-workspace { background-color: #f9fafb; }
-.app-header { height: 60px; background: white; border-bottom: 1px solid #e5e7eb; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-.main-content { flex: 1; overflow: hidden; display: flex; width: 100%; position: relative; }
-.workspace-wrapper { width: 100%; height: 100%; display: flex; }
-
-/* Custom Scrollbar */
-.custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }

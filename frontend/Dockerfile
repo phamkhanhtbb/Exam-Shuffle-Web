@@ -1,14 +1,43 @@
-# Dockerfile for Frontend (Dev/Build)
-
-FROM node:18-alpine
+# Stage 1: Build
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci --legacy-peer-deps
 
 COPY . .
 
-EXPOSE 3000
+# Build args for production API URL
+ARG REACT_APP_API_URL=https://api.trondeonline.me
+ARG REACT_APP_AWS_REGION=ap-southeast-1
+ARG REACT_APP_S3_BUCKET_INPUT=app-docx-input-team1
+ARG REACT_APP_S3_BUCKET_OUTPUT=app-docx-output-team1
+ARG REACT_APP_SQS_QUEUE_URL
+ARG REACT_APP_DYNAMODB_TABLE=DocxJobs
+ARG REACT_APP_AWS_ACCESS_KEY_ID
+ARG REACT_APP_AWS_SECRET_ACCESS_KEY
 
-CMD ["npm", "start"]
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ENV REACT_APP_AWS_REGION=$REACT_APP_AWS_REGION
+ENV REACT_APP_S3_BUCKET_INPUT=$REACT_APP_S3_BUCKET_INPUT
+ENV REACT_APP_S3_BUCKET_OUTPUT=$REACT_APP_S3_BUCKET_OUTPUT
+ENV REACT_APP_SQS_QUEUE_URL=$REACT_APP_SQS_QUEUE_URL
+ENV REACT_APP_DYNAMODB_TABLE=$REACT_APP_DYNAMODB_TABLE
+ENV REACT_APP_AWS_ACCESS_KEY_ID=$REACT_APP_AWS_ACCESS_KEY_ID
+ENV REACT_APP_AWS_SECRET_ACCESS_KEY=$REACT_APP_AWS_SECRET_ACCESS_KEY
+
+RUN npm run build
+
+# Stage 2: Serve with Nginx
+FROM nginx:alpine
+
+# Copy built files
+COPY --from=build /app/build /usr/share/nginx/html
+
+# Copy nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

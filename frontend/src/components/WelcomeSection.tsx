@@ -12,8 +12,7 @@ const WelcomeSection: React.FC<WelcomeSectionProps> = ({ onFileChange }) => {
             <div
                 className="bg-white rounded-3xl shadow-2xl animate-scale-up overflow-hidden"
                 style={{
-                    width: 'clamp(400px, 35vw, 600px)',
-                    minWidth: '400px'
+                    width: 'min(90vw, 600px)',
                 }}
             >
                 {/* Logo Header inside card */}

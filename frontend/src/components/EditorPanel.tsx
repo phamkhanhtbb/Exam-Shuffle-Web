@@ -9,6 +9,7 @@ interface EditorPanelProps {
     width: number;
     value: string;
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+    isMobile?: boolean;
 }
 
 // Highlight function for syntax coloring
@@ -73,15 +74,16 @@ const highlightSyntax = (text: string): string => {
     return html;
 };
 
-const EditorPanel = React.forwardRef<EditorPanelHandle, EditorPanelProps>(({ width, value, onChange }, ref) => {
+const EditorPanel = React.forwardRef<EditorPanelHandle, EditorPanelProps>(({ width, value, onChange, isMobile }, ref) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
 
     React.useImperativeHandle(ref, () => ({
         scrollToLine: (lineNumber: number) => {
             if (textareaRef.current) {
-                // Line height is 1.5 * 14px = 21px
-                const lineHeight = 21;
+                // Line height is 1.5 * 14px = 21px (or 1.5 * 12px = 18px on mobile)
+                const fontSize = isMobile ? 12 : 14;
+                const lineHeight = fontSize * 1.5;
                 const scrollTop = (lineNumber - 1) * lineHeight;
 
                 // Use smooth scrolling
@@ -89,9 +91,7 @@ const EditorPanel = React.forwardRef<EditorPanelHandle, EditorPanelProps>(({ wid
                     top: scrollTop,
                     behavior: 'smooth'
                 });
-                // Also focus logic? Focus might jump, so maybe just focus without scroll?
-                // Actually, if we focus, browser might auto-scroll.
-                // Let's keep focus but rely on scrollTo for positioning.
+
                 if (document.activeElement !== textareaRef.current) {
                     textareaRef.current.focus({ preventScroll: true });
                 }
@@ -109,7 +109,7 @@ const EditorPanel = React.forwardRef<EditorPanelHandle, EditorPanelProps>(({ wid
 
     const sharedStyle: React.CSSProperties = {
         fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-        fontSize: '14px',
+        fontSize: isMobile ? '12px' : '14px',
         lineHeight: '1.5',
 
         letterSpacing: '0px',
@@ -126,16 +126,16 @@ const EditorPanel = React.forwardRef<EditorPanelHandle, EditorPanelProps>(({ wid
 
     return (
         <div
-            className="flex flex-col bg-gray-50 border-l border-gray-200 min-w-0 shadow-lg z-20 transition-none"
-            style={{ width: `${width}%` }}
+            className="flex flex-col bg-gray-50 border-l border-gray-200 min-w-0 shadow-lg z-20 transition-none h-full"
+            style={{ width: isMobile ? '100%' : `${width}%` }}
         >
             {/* Header */}
-            <div className="h-11 border-b border-gray-200 bg-white flex items-center justify-between px-4 shrink-0">
+            <div className={`${isMobile ? 'h-9 px-3' : 'h-11 px-4'} border-b border-gray-200 bg-white flex items-center justify-between shrink-0`}>
                 <span className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                    <Code size={14} className="text-indigo-500" /> Mã nguồn (Editor)
+                    <Code size={isMobile ? 12 : 14} className="text-indigo-500" /> Mã nguồn
                 </span>
-                <span className="text-[10px] text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200 flex items-center gap-1 font-medium">
-                    <Edit3 size={10} /> Editable
+                <span className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 flex items-center gap-1 font-medium">
+                    <Edit3 size={isMobile ? 8 : 10} /> Edit
                 </span>
             </div>
 
