@@ -10,6 +10,12 @@ services:
       - ./backend/.env
     expose:
       - "5000"
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/docs')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - app-network
 
@@ -21,6 +27,12 @@ services:
     command: [ "python", "worker.py" ]
     env_file:
       - ./backend/.env
+    healthcheck:
+      test: [ "CMD", "pgrep", "-f", "worker.py" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     networks:
       - app-network
 
@@ -41,6 +53,12 @@ services:
     restart: always
     expose:
       - "80"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - app-network
 
@@ -57,9 +75,17 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     networks:
       - app-network
 
