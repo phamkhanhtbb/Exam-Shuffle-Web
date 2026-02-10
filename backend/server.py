@@ -46,6 +46,10 @@ app = FastAPI(
     description="API for exam shuffling and processing",
     version="2.0.0"
 )
+
+# --- METRICS ---
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 origins = [
     "http://localhost:3000",
     "https://trondeonline.me",
