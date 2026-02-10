@@ -740,6 +740,7 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
                  if has_short_answers: break
              
              if not has_short_answers:
-                raise AnswerKeyNotFoundError("Không tìm thấy bảng đáp án (Header 'ĐÁP ÁN') và không có đáp án gạch chân/tô đỏ/đánh dấu sao (*).")
+                import logging
+                logging.getLogger("server").warning("Không tìm thấy đáp án — người dùng sẽ tự chọn/nhập.")
 
     return structure
