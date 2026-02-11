@@ -266,7 +266,7 @@ const parseDocumentBlocks = (rawText: string): ParsedBlock[] => {
       const lowAnswers: any[] = [];
 
       // Header Text
-      let headerContent = trimmedLine.replace(QUESTION_REGEX, '').replace(/^[\.:]\s*/, '').trim();
+      let headerContent = trimmedLine.replace(QUESTION_REGEX, '').replace(/^[.:]\s*/, '').trim();
       headerContent = cleanContentText(headerContent);
       if (headerContent && !isJustMarker(headerContent)) {
         qContentLines.push(headerContent);
