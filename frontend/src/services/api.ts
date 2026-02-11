@@ -65,4 +65,18 @@ export const api = {
         const response = await apiClient.get<JobStatusResponse>(`/api/status/${jobId}`);
         return response.data;
     },
+
+    /**
+     * Preview Exam (Upload DOCX)
+     */
+    previewExam: async (file: File): Promise<any> => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await apiClient.post('/api/preview', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        return response.data;
+    },
 };

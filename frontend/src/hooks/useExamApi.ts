@@ -2,10 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, SubmitJobRequest, JobStatusResponse } from '../services/api';
 import { S3Service } from '../services/s3Service';
 import { UploadProgress } from '../types';
-import axios from 'axios';
 
-// Get API URL from environment variable
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+
 
 // Query keys for cache management
 export const queryKeys = {
@@ -65,21 +64,17 @@ export const useJobStatus = (jobId: string | null, options?: { enabled?: boolean
 };
 
 /**
- * Hook to preview exam file (Legacy/Direct endpoint)
+ * Hook to preview exam file (Unified)
  */
 export const usePreviewExam = () => {
     return useMutation({
-        mutationFn: async (file: File) => {
-            const formData = new FormData();
-            formData.append('file', file);
-            const response = await axios.post(`${API_URL}/api/preview`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-            return response.data;
-        },
+        mutationFn: (file: File) => api.previewExam(file),
     });
 };
 
+/**
+ * Combined hook for full upload + submit flow
+ */
 /**
  * Combined hook for full upload + submit flow
  */
@@ -108,6 +103,7 @@ export const useCreateJob = () => {
             jobId: uploadData.jobId,
             fileKey: uploadData.fileKey,
             numVariants,
+            rawText: rawText // Explicit assignment to avoid shorthand confusion if any
         });
 
         return jobResult.jobId;

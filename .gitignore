@@ -28,7 +28,7 @@ debug_regex.js
 /test_*.py
 /verify_*.py
 check_server.py
-
+*.docx
 # --- Agent & Docs ---
 .agent/
 GEMINI.md
