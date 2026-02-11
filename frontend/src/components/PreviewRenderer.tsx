@@ -44,7 +44,7 @@ type ParsedBlock =
 
 // --- Constants & Helpers ---
 // Allow optional [ID:xxx] prefix before Câu
-const QUESTION_REGEX = /(?:\[ID:[^\]]*\]\s*)?Câu\s*(\d+)/i;
+const QUESTION_REGEX = /(?:\[ID:[^\]]*]\s*)?Câu\s*(\d+)/i;
 
 const stripFormatMarkers = (text: string): string => {
   return text.replace(/\[!b:/g, '').replace(/\]/g, '').replace(/\[!/g, '');
@@ -293,24 +293,26 @@ const parseDocumentBlocks = (rawText: string): ParsedBlock[] => {
         // PART 1: Uppercase Answers Only (A, B, C, D)
         if (currentPart === 1 && hasUppercaseAnswerPattern(currTrimmed)) {
           const extracted = extractUppercaseAnswers(currTrimmed);
+          const currentLineNumber = i + 1; // Capture loop variable
           extracted.forEach(a => upAnswers.push({
-            letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: i + 1
+            letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: currentLineNumber
           }));
           i++;
         }
         // PART 2: Both uppercase (A, B, C, D) and lowercase (a, b, c, d) treated as TF options
         else if (currentPart === 2 && (hasLowercaseAnswerPattern(currTrimmed) || hasUppercaseAnswerPattern(currTrimmed))) {
+          const currentLineNumber = i + 1; // Capture loop variable
           // Check lowercase first, then uppercase
           if (hasLowercaseAnswerPattern(currTrimmed)) {
             const extracted = extractLowercaseAnswers(currTrimmed);
             extracted.forEach(a => lowAnswers.push({
-              letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: i + 1
+              letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: currentLineNumber
             }));
           } else {
             // Uppercase in Part 2 - keep original letter for click handler compatibility
             const extracted = extractUppercaseAnswers(currTrimmed);
             extracted.forEach(a => lowAnswers.push({
-              letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: i + 1
+              letter: a.letter, content: a.content, isCorrect: a.isMarkedCorrect, lineNumber: currentLineNumber
             }));
           }
           i++;
@@ -658,7 +660,7 @@ const TrueFalseOption: React.FC<TrueFalseOptionProps> = ({ letter, content, isTr
 const parseTokens = (text: string, assetsMap: AssetMap): React.ReactNode => {
   let cleanText = cleanContentText(text);
   if (!cleanText.trim()) return null;
-  const regex = /(\[!b:.*?\]|\[img:\$.*?\$\]|\[!m:\$.*?\$\]|\$[^\$]+\$)/g;
+  const regex = /(\[!b:.*?]|\[img:\$.*?\$]|\[!m:\$.*?\$]|\$[^$]+\$)/g;
   const parts = cleanText.split(regex);
 
   return parts.map((part, index) => {
