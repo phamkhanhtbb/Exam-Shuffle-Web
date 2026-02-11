@@ -1,14 +1,18 @@
-name: Deploy to EC2
+name: Deploy to EC2 (Legacy - use docker-build-deploy.yml instead)
+
+# ⚠️ THIS WORKFLOW IS DEPRECATED
+# The new workflow "docker-build-deploy.yml" builds images on GitHub,
+# pushes to Docker Hub, and deploys by pulling (no build on server).
+# This file is kept for reference only.
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:  # Manual trigger only (no longer auto-runs on push)
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: 🚀 Deploy to EC2
+      - name: 🚀 Deploy to EC2 (Legacy)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
