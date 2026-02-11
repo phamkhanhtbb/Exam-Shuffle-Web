@@ -15,6 +15,7 @@ OPTION_START_PATTERN = re.compile(r"^\s*(\*?)([A-H])\s*[\.\)]\s*")
 INLINE_OPTION_PATTERN = re.compile(r"(?:^|(?<![0-9])[\s\uFFFC])(\*?)([A-H])[\.\)](\*?)")
 # Fix: Limit sub-options to a-d (standard) and ONLY ')' as requested.
 SUB_OPTION_PATTERN = re.compile(r"^\s*(\*?)([a-d])\s*\)\s*")
+INLINE_SUB_OPTION_PATTERN = re.compile(r"(?:^|(?<![0-9])[\s\uFFFC])(\*?)([a-d])\)\s*")
 END_NOTE_PATTERN = re.compile(r"^\s*[-]*\s*(HẾT|GIÁM THỊ|GHI CHÚ)\s*[-]*", re.IGNORECASE)
 # Regex nhận diện tiêu đề phần đáp án để cắt bỏ (tránh match 'Đáp án: ...' của câu hỏi)
 ANSWER_HEADER_PATTERN = re.compile(r"^\s*(?:BẢNG\s*)?ĐÁP\s*ÁN\s*(?:CHI TIẾT|TRẮC NGHIỆM|THAM KHẢO|PHẦN\s+.*)?\s*$", re.IGNORECASE)

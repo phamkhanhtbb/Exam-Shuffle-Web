@@ -8,11 +8,11 @@ from docx.oxml import OxmlElement
 # Import internal modules
 from .constants import (
     SECTION_PATTERN, QUESTION_PATTERN, OPTION_START_PATTERN,
-    INLINE_OPTION_PATTERN, SUB_OPTION_PATTERN, END_NOTE_PATTERN, ANSWER_HEADER_PATTERN
+    INLINE_OPTION_PATTERN, SUB_OPTION_PATTERN, INLINE_SUB_OPTION_PATTERN, END_NOTE_PATTERN, ANSWER_HEADER_PATTERN
 )
 from .models import OptionBlock, QuestionBlock, Section, ExamStructure
 from .utils import (
-    _iter_block_items, _get_text, _build_paragraph_mask, _slice_paragraph_runs
+    _iter_block_items, _get_text, _build_paragraph_mask, _slice_paragraph_runs, OBJ_CHAR
 )
 from exceptions import AnswerKeyNotFoundError, EmptyQuestionError
 
@@ -30,9 +30,9 @@ def _generate_content_hash(text: str) -> str:
     return hashlib.md5(clean.encode('utf-8')).hexdigest()[:12]
 
 
-def _split_inline_options_smart(paragraph) -> Tuple[Optional[OxmlElement], List[dict]]:
+def _split_inline_options_smart(paragraph, pattern=INLINE_OPTION_PATTERN) -> Tuple[Optional[OxmlElement], List[dict]]:
     full_text, mask = _build_paragraph_mask(paragraph)
-    matches = list(INLINE_OPTION_PATTERN.finditer(full_text))
+    matches = list(pattern.finditer(full_text))
     
     if not matches: return None, []
     
@@ -323,7 +323,7 @@ def _parse_tf_options(chunk_elements: List[Tuple[str, object]]) -> List[OptionBl
         
     return options
 
-def _fallback_inline_options(chunk_elements: List[Tuple[str, object]]) -> Tuple[List[OxmlElement], List[OptionBlock]]:
+def _fallback_inline_options(chunk_elements: List[Tuple[str, object]], pattern=INLINE_OPTION_PATTERN) -> Tuple[List[OxmlElement], List[OptionBlock]]:
     """Try to find inline options (Câu 1: ... A. ... B. ...)"""
     stems = []
     options = []
@@ -331,7 +331,7 @@ def _fallback_inline_options(chunk_elements: List[Tuple[str, object]]) -> Tuple[
     
     for kind, block in chunk_elements:
         if kind == 'p':
-            pre_elem, inline_ops = _split_inline_options_smart(block)
+            pre_elem, inline_ops = _split_inline_options_smart(block, pattern=pattern)
             
             if pre_elem:
                 stems.append(pre_elem)
@@ -400,14 +400,59 @@ def _parse_options(chunk_elements: List[Tuple[str, object]]) -> Tuple[str, List[
                      first_opt_idx = idx
                      break
         if first_opt_idx != -1:
+            # --- FIX: Infer missing option a) ---
+            # If first found option is 'b' (not 'a'), the content between
+            # the question stem and 'b)' is likely option a) without a label.
+            # Example: "Câu 3: ... [Image] Text content. b) ..."
+            #   -> "Text content." should be option a).
+            if first_opt_lbl != 'a' and first_opt_idx > 1:
+                stem_elements = []
+                option_a_elements = []
+                
+                for idx in range(first_opt_idx):
+                    kind_i, block_i = chunk_elements[idx]
+                    
+                    # Block 0 is always stem (Câu N: ...)
+                    if idx == 0:
+                        stem_elements.append(block_i._element)
+                        continue
+                    
+                    # Image-only paragraphs are part of the question context (stem)
+                    if kind_i == 'p':
+                        full_text_i, _ = _build_paragraph_mask(block_i)
+                        stripped = full_text_i.strip()
+                        # Pure image or empty paragraph -> stem
+                        if stripped == OBJ_CHAR or stripped == '':
+                            stem_elements.append(block_i._element)
+                            continue
+                    
+                    # Tables before options -> stem
+                    if kind_i == 'tbl':
+                        stem_elements.append(block_i._element)
+                        continue
+                    
+                    # Text paragraphs after stem -> option a content
+                    option_a_elements.append(block_i._element)
+                
+                if option_a_elements:
+                    synthetic_a = OptionBlock('a', option_a_elements, False)
+                    tf_options.insert(0, synthetic_a)
+                    return "true_false", stem_elements, tf_options
+            
             stems = [blk._element for _, blk in chunk_elements[:first_opt_idx]]
             return "true_false", stems, tf_options
 
-    # 3. Try Inline Fallback
-    stems_inline, ops_inline = _fallback_inline_options(chunk_elements)
+    # 3. Try Inline Fallback (MCQ - A, B, C, D)
+    stems_inline, ops_inline = _fallback_inline_options(chunk_elements, pattern=INLINE_OPTION_PATTERN)
     if ops_inline:
          if len(ops_inline) >= 2:
              return "mcq", stems_inline, ops_inline
+
+    # 3.5. Try Inline Fallback (True/False - a, b, c, d)
+    stems_inline_tf, ops_inline_tf = _fallback_inline_options(chunk_elements, pattern=INLINE_SUB_OPTION_PATTERN)
+    if ops_inline_tf:
+         if len(ops_inline_tf) >= 2:
+             return "true_false", stems_inline_tf, ops_inline_tf
 
     # 4. Explicit Short Answer (No options but valid question)
     return "short", [blk._element for _, blk in chunk_elements], []
