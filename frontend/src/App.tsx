@@ -1,61 +1,45 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AssetMap } from './components/PreviewRenderer';
+import React, { useEffect, useState } from 'react';
 import './App.css';
 
 // Import components
 import WelcomeSection from './components/WelcomeSection';
 import AppHeader from './components/AppHeader';
-import PreviewPanel from './components/PreviewPanel';
-import EditorPanel, { EditorPanelHandle } from './components/EditorPanel';
-import PaneResizer from './components/PaneResizer';
+import Workspace from './components/Workspace';
 import ProcessingOverlay from './components/ProcessingOverlay';
-import { FileText, Code } from 'lucide-react';
 
-// Import React Query hooks
-import { useCreateJob, useJobStatus, usePreviewExam } from './hooks';
+// Import hooks
+import { useCreateJob, useJobStatus, useExamEditor, useResizablePanel, useIsMobile } from './hooks';
 import { UploadJob } from './types';
 
-// Mobile detection hook
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint);
-  useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${breakpoint}px)`);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
-  }, [breakpoint]);
-  return isMobile;
-}
-
 function App() {
+  // --- Top-level state ---
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [numVariants, setNumVariants] = useState<number>(10);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<{ raw_text: string; assets_map: AssetMap, question_count: number } | null>(null);
   const [error, setError] = useState<string>('');
-
-  // Interaction State
-  const [correctAnswers, setCorrectAnswers] = useState<Map<number, string>>(new Map());
-  const [trueFalseAnswers, setTrueFalseAnswers] = useState<Map<string, boolean>>(new Map());
-  const editorRef = useRef<EditorPanelHandle>(null);
-
-  // Overlay states
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [showOverlay, setShowOverlay] = useState(false);
 
-  // Resize states
-  const [leftWidth, setLeftWidth] = useState(60);
-  const [isResizing, setIsResizing] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Mobile state
+  // --- Custom hooks ---
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState<'preview' | 'editor'>('preview');
+  const { leftWidth, containerRef, startResizing } = useResizablePanel(60);
+  const {
+    previewData,
+    correctAnswers,
+    trueFalseAnswers,
+    editorRef,
+    isPreviewLoading,
+    handleFilePreview,
+    handleTextChange,
+    handleLineClick,
+    handleAnswerSelect,
+    handleTrueFalseToggle,
+    handleShortAnswerChange,
+    resetEditor,
+  } = useExamEditor();
 
   // React Query hooks
   const { createJob, isLoading: isCreatingJob } = useCreateJob();
-  const previewMutation = usePreviewExam();
-
 
   // Auto-polling job status
   const { data: jobStatusData } = useJobStatus(currentJobId, {
@@ -65,7 +49,7 @@ function App() {
   // Compute current job from status
   const currentJob: UploadJob | null = jobStatusData ? {
     jobId: jobStatusData.JobId,
-    fileKey: '', // Not needed for display
+    fileKey: '',
     fileName: selectedFile?.name || '',
     status: jobStatusData.Status as 'Queued' | 'Processing' | 'Done' | 'Failed',
     outputUrl: jobStatusData.OutputUrl || '',
@@ -73,7 +57,7 @@ function App() {
     numVariants,
   } : null;
 
-  // Handle job completion or failure
+  // Handle job failure
   useEffect(() => {
     if (jobStatusData && jobStatusData.Status === 'Failed') {
       setError('Lỗi xử lý: ' + (jobStatusData.LastError || 'Unknown error'));
@@ -81,38 +65,11 @@ function App() {
   }, [jobStatusData]);
 
   // Determine if still processing
-  // isProcessing = true when:
-  // 1. Creating job (uploading + submitting)
-  // 2. Waiting for first job status (currentJobId exists but no data yet)
-  // 3. Job status is Queued or Processing
   const jobStatus = jobStatusData?.Status;
   const isJobComplete = jobStatus === 'Done' || jobStatus === 'Failed';
   const isWaitingForStatus = !!currentJobId && !jobStatusData;
   const isJobRunning = jobStatusData && !isJobComplete;
   const isProcessing = isCreatingJob || isWaitingForStatus || !!isJobRunning;
-
-  // --- RESIZE LOGIC ---
-  const startResizing = useCallback(() => setIsResizing(true), []);
-  const stopResizing = useCallback(() => setIsResizing(false), []);
-
-  const resize = useCallback((mouseMoveEvent: MouseEvent) => {
-    if (isResizing && containerRef.current) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      let newWidth = ((mouseMoveEvent.clientX - containerRect.left) / containerRect.width) * 100;
-      if (newWidth < 20) newWidth = 20;
-      if (newWidth > 80) newWidth = 80;
-      setLeftWidth(newWidth);
-    }
-  }, [isResizing]);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', resize);
-    window.addEventListener('mouseup', stopResizing);
-    return () => {
-      window.removeEventListener('mousemove', resize);
-      window.removeEventListener('mouseup', stopResizing);
-    };
-  }, [resize, stopResizing]);
 
   // --- HANDLERS ---
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,65 +80,22 @@ function App() {
       setError('');
       setUploadProgress(0);
 
-      // Use React Query mutation for preview
       try {
-        const result = await previewMutation.mutateAsync(file);
-        if (result.status === 'success') {
-          setPreviewData(result.data);
-
-          // Initialize correctAnswers from raw text (for short answer questions)
-          const initialAnswers = new Map<number, string>();
-          const rawLines = result.data.raw_text.split('\n');
-          let currentQIndex = 0;
-          const qRegex = /(?:\[ID:[^\]]*\]\s*)?Câu\s*(\d+)/i;
-          const ansRegex = /^Đáp án:\s*(.+)/i;
-
-          for (const line of rawLines) {
-            const qMatch = line.match(qRegex);
-            if (qMatch) {
-              currentQIndex = parseInt(qMatch[1], 10);
-            }
-            const ansMatch = line.trim().match(ansRegex);
-            if (ansMatch && currentQIndex > 0) {
-              initialAnswers.set(currentQIndex, ansMatch[1].trim());
-            }
-          }
-
-          if (initialAnswers.size > 0) {
-            setCorrectAnswers(initialAnswers);
-          }
-        }
+        await handleFilePreview(file);
       } catch (err) {
         console.error('Preview error:', err);
         setError('Lỗi đọc file: ' + (err instanceof Error ? err.message : String(err)));
-        setSelectedFile(null); // Reset file selection to clear zombie state
-        setPreviewData(null);
+        setSelectedFile(null);
+        resetEditor();
         setUploadProgress(0);
-        setShowOverlay(true); // Show overlay to display error? Or just use main error display?
-        // Actually, main error display only shows if showOverlay is true OR if we have another mechanism.
-        // Looking at render: ProcessingOverlay takes `error` prop.
-        // But main layout doesn't show error banner.
-        // Let's use setShowOverlay(true) to show the error in the overlay.
         setShowOverlay(true);
       }
     }
   };
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (previewData) {
-      setPreviewData({
-        ...previewData,
-        raw_text: e.target.value,
-      });
-    }
-  };
-
   const handleReset = () => {
     setSelectedFile(null);
-    setPreviewData(null);
-    setCorrectAnswers(new Map());
-    setCorrectAnswers(new Map());
-    setTrueFalseAnswers(new Map());
+    resetEditor();
     setCurrentJobId(null);
     setError('');
     setNumVariants(10);
@@ -202,228 +116,15 @@ function App() {
     setError('');
 
     try {
-      // Pass raw_text from Preview to Create Job logic
       const rawText = previewData?.raw_text || '';
-
       const jobId = await createJob(selectedFile, numVariants, (progress) => {
         setUploadProgress(progress.percentage);
       }, rawText);
-
       setCurrentJobId(jobId);
     } catch (err) {
       setError('Lỗi: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
-
-
-
-  // --- INTERACTION HANDLERS ---
-  const handleLineClick = useCallback((lineNumber: number) => {
-    if (editorRef.current) {
-      editorRef.current.scrollToLine(lineNumber);
-    }
-  }, []);
-
-  const handleAnswerSelect = useCallback((_questionIndex: number, answer: string, sourceLineNumber: number, answerLineNumber: number) => {
-    // 0. Scroll to answer line
-    if (editorRef.current && answerLineNumber) {
-      editorRef.current.scrollToLine(answerLineNumber);
-    }
-
-    // 1. Update Preview Data (Raw Text) for Bidirectional Edit
-    setPreviewData(prev => {
-      if (!prev) return prev;
-
-      // Split lines to find valid range. sourceLineNumber is 1-based.
-      const lines = prev.raw_text.split('\n');
-      const startIdx = sourceLineNumber - 1;
-
-      // Search boundaries: from startIdx until next "Câu" or Part header or End
-      let endIdx = lines.length;
-      const questionRegex = /^Câu\s*\d+/i;
-
-      for (let i = startIdx + 1; i < lines.length; i++) {
-        const trimmed = lines[i].trim();
-        if (trimmed.match(questionRegex) ||
-          trimmed.toLowerCase().includes('phần ii') ||
-          trimmed.toLowerCase().includes('phần iii')) {
-          endIdx = i;
-          break;
-        }
-      }
-
-      // 2. Clear existing * from ALL options (A-H) in this range
-      let newLines = [...lines]; // Define newLines here!
-
-      for (let j = startIdx; j < endIdx; j++) {
-        // Remove * from *A., *B., ... *H.
-        newLines[j] = newLines[j].replace(/(\*)([A-H])([.\\)])/g, '$2$3');
-      }
-
-      // 3. Set the new answer using answerLineNumber directly
-      if (answerLineNumber && answerLineNumber > 0 && answerLineNumber <= lines.length) {
-        const lineIdx = answerLineNumber - 1;
-        const targetLine = lines[lineIdx]; // Use ORIGINAL line to check state
-        const targetLetter = answer.toUpperCase();
-
-        // Check if it was already selected
-        // Regex: (*?)Letter[.)]
-        const wasSelectedRegex = new RegExp(`\\*${targetLetter}([.\\)])`);
-        const wasSelected = wasSelectedRegex.test(targetLine);
-
-        if (!wasSelected) {
-          // Add * to the specific option
-          newLines[lineIdx] = newLines[lineIdx].replace(
-            new RegExp(`(^|\\s)(${targetLetter})([.\\)])`),
-            '$1*$2$3'
-          );
-        }
-      }
-
-      return {
-        ...prev,
-        raw_text: newLines.join('\n')
-      };
-    });
-  }, []);
-
-  const handleTrueFalseToggle = useCallback((_questionIndex: number, letter: string, _sourceLineNumber: number, answerLineNumber: number) => {
-    // 0. Scroll to answer line
-    if (editorRef.current && answerLineNumber) {
-      editorRef.current.scrollToLine(answerLineNumber);
-    }
-
-    // 1. Update Preview Data (Text)
-    setPreviewData(prev => {
-      if (!prev) return prev;
-      const lines = prev.raw_text.split('\n');
-      // answerLineNumber is 1-based, so index is -1
-      const lineIdx = answerLineNumber - 1;
-
-      if (lineIdx >= 0 && lineIdx < lines.length) {
-        const line = lines[lineIdx];
-        // Support both uppercase (A.) and lowercase (a)) formats
-        // Use case-insensitive matching
-        const targetLetterLower = letter.toLowerCase();
-        const targetLetterUpper = letter.toUpperCase();
-
-        // Regex: Find (*?)letter[.)], case-insensitive
-        // Match formats: A. A) a. a)
-        const regex = new RegExp(`(\\*?)(${targetLetterLower}|${targetLetterUpper})([.)])`, 'gi');
-
-        if (regex.test(line)) {
-          // Check if SPECIFIC option has star (case-insensitive)
-          const matchStar = line.match(new RegExp(`\\*(${targetLetterLower}|${targetLetterUpper})[.)]`, 'i'));
-          const hasStar = !!matchStar;
-
-          let newLine = line;
-
-          if (hasStar) {
-            // Remove star: *A. -> A. or *a) -> a)
-            newLine = newLine.replace(new RegExp(`\\*(${targetLetterLower}|${targetLetterUpper})([.)])`, 'gi'), '$1$2');
-          } else {
-            // Add star: A. -> *A. or a) -> *a)
-            newLine = newLine.replace(new RegExp(`(^|\\s)(${targetLetterLower}|${targetLetterUpper})([.)])`, 'gi'), '$1*$2$3');
-          }
-
-          if (newLine !== line) {
-            const newLines = [...lines];
-            newLines[lineIdx] = newLine;
-            return {
-              ...prev,
-              raw_text: newLines.join('\n')
-            };
-          }
-        }
-      }
-      return prev;
-    });
-  }, []);
-
-  const handleShortAnswerChange = useCallback((questionIndex: number, text: string, sourceLineNumber: number) => {
-    // 1. Update Correct Answers Map
-    setCorrectAnswers(prev => {
-      const newMap = new Map(prev);
-      if (text) newMap.set(questionIndex, text);
-      else newMap.delete(questionIndex);
-      return newMap;
-    });
-
-    // 2. Update Raw Text (Bidirectional Sync)
-    setPreviewData(prev => {
-      if (!prev) return prev;
-      const lines = prev.raw_text.split('\n');
-
-      if (!sourceLineNumber || sourceLineNumber < 1) return prev;
-      const startIdx = sourceLineNumber - 1;
-
-      // Find End of Question Block
-      let endIdx = lines.length;
-      const questionRegex = /(?:\[ID:[^\]]*\]\s*)?Câu\s*\d+/i;
-
-      for (let i = startIdx + 1; i < lines.length; i++) {
-        const trimmed = lines[i].trim();
-        const upper = trimmed.toUpperCase();
-
-        // Check for End Markers (HẾT, ĐÁP ÁN table header)
-        if (/^[-=\s]*HẾT[-=\s]*$/.test(upper) ||
-          upper === 'ĐÁP ÁN' ||
-          upper === 'BẢNG ĐÁP ÁN' ||
-          upper.includes('[!B:ĐÁP ÁN]') // Check for bold tagged markers too
-        ) {
-          endIdx = i;
-          break;
-        }
-
-        if (trimmed.match(questionRegex) ||
-          trimmed.toLowerCase().includes('phần ii') ||
-          trimmed.toLowerCase().includes('phần 2') || // Add Part 2 check variants
-          trimmed.toLowerCase().includes('phần iii') ||
-          trimmed.toLowerCase().includes('phần 3')) { // Add Part 3 check variants
-          endIdx = i;
-          break;
-        }
-      }
-
-      // Look for existing 'Đáp án:' line within [startIdx, endIdx)
-      let answerLineIdx = -1;
-      const answerRegex = /^Đáp án:/i;
-
-      for (let i = startIdx; i < endIdx; i++) {
-        if (answerRegex.test(lines[i].trim())) {
-          answerLineIdx = i;
-          break;
-        }
-      }
-
-      const newLines = [...lines];
-
-      if (answerLineIdx !== -1) {
-        // Found existing line
-        if (text) {
-          // Update it
-          newLines[answerLineIdx] = `Đáp án: ${text}`;
-        } else {
-          // If text empty, remove the line? Or keep it empty? 
-          // Let's remove it to keep text clean, or just empty "Đáp án:"
-          // User request: "adds line...". Implies dynamic.
-          // Let's set it to empty for now to avoid jumping structure too much, or delete.
-          // Deleting is cleaner for generating clean regex later.
-          newLines.splice(answerLineIdx, 1);
-        }
-      } else {
-        // Not found, insert at the end of the block
-        if (text) {
-          newLines.splice(endIdx, 0, `Đáp án: ${text}`);
-        }
-      }
-
-      return {
-        ...prev,
-        raw_text: newLines.join('\n')
-      };
-    });
-  }, []);
 
   // --- RENDER ---
   return (
@@ -445,58 +146,22 @@ function App() {
         {!selectedFile && <WelcomeSection onFileChange={handleFileChange} />}
 
         {selectedFile && (
-          <div
-            className="workspace-wrapper flex w-full h-full bg-gray-100 overflow-hidden animate-expand"
-            ref={containerRef}
-          >
-            {/* Mobile Tab Bar */}
-            {isMobile && (
-              <div className="mobile-tab-bar">
-                <button
-                  className={activeTab === 'preview' ? 'active' : ''}
-                  onClick={() => setActiveTab('preview')}
-                >
-                  <FileText size={16} /> Preview
-                </button>
-                <button
-                  className={activeTab === 'editor' ? 'active' : ''}
-                  onClick={() => setActiveTab('editor')}
-                >
-                  <Code size={16} /> Editor
-                </button>
-              </div>
-            )}
-
-            {/* Preview Panel: visible on desktop, or when active tab on mobile */}
-            {(!isMobile || activeTab === 'preview') && (
-              <PreviewPanel
-                width={leftWidth}
-                isLoading={previewMutation.isPending}
-                previewData={previewData}
-                onLineClick={handleLineClick}
-                onAnswerSelect={handleAnswerSelect}
-                correctAnswers={correctAnswers}
-                onTrueFalseToggle={handleTrueFalseToggle}
-                trueFalseAnswers={trueFalseAnswers}
-                onShortAnswerChange={handleShortAnswerChange}
-                isMobile={isMobile}
-              />
-            )}
-
-            {/* Resizer: desktop only */}
-            {!isMobile && <PaneResizer onMouseDown={startResizing} />}
-
-            {/* Editor Panel: visible on desktop, or when active tab on mobile */}
-            {(!isMobile || activeTab === 'editor') && (
-              <EditorPanel
-                ref={editorRef}
-                width={100 - leftWidth}
-                value={previewData?.raw_text || ''}
-                onChange={handleTextChange}
-                isMobile={isMobile}
-              />
-            )}
-          </div>
+          <Workspace
+            previewData={previewData}
+            isPreviewLoading={isPreviewLoading}
+            editorRef={editorRef}
+            isMobile={isMobile}
+            leftWidth={leftWidth}
+            containerRef={containerRef}
+            startResizing={startResizing}
+            correctAnswers={correctAnswers}
+            trueFalseAnswers={trueFalseAnswers}
+            onLineClick={handleLineClick}
+            onAnswerSelect={handleAnswerSelect}
+            onTrueFalseToggle={handleTrueFalseToggle}
+            onShortAnswerChange={handleShortAnswerChange}
+            onTextChange={handleTextChange}
+          />
         )}
       </main>
 

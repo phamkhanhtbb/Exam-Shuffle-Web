@@ -20,3 +20,15 @@ class FontError(ExamError):
 class EmptyQuestionError(ExamError):
     def __init__(self, message="Không tìm thấy câu hỏi nào trong đề thi. Vui lòng kiểm tra lại các từ khóa 'Câu', 'Bài'."):
         super().__init__(message, "NO_QUESTIONS")
+
+class TableParseError(ExamError):
+    def __init__(self, message="Lỗi xử lý bảng trong đề thi."):
+        super().__init__(message, "TABLE_PARSE_ERROR")
+
+class ParagraphParseError(ExamError):
+    def __init__(self, message="Lỗi xử lý đoạn văn trong đề thi."):
+        super().__init__(message, "PARAGRAPH_PARSE_ERROR")
+
+class RenderingError(ExamError):
+    def __init__(self, message="Lỗi khi render cấu trúc đề thi."):
+        super().__init__(message, "RENDERING_ERROR")
