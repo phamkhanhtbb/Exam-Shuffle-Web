@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { examApi } from '../api';
-import {
-    UploadUrlRequest,
-    SubmitJobRequest,
-    UploadProgress,
-    JobStatusResponse
-} from '../api/types';
+import { api, SubmitJobRequest, JobStatusResponse } from '../services/api';
+import { S3Service } from '../services/s3Service';
+import { UploadProgress } from '../types';
+import axios from 'axios';
+
+// Get API URL from environment variable
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // Query keys for cache management
 export const queryKeys = {
@@ -14,20 +14,11 @@ export const queryKeys = {
 };
 
 /**
- * Hook to get presigned upload URL
- */
-export const useGetUploadUrl = () => {
-    return useMutation({
-        mutationFn: (request: UploadUrlRequest) => examApi.getUploadUrl(request),
-    });
-};
-
-/**
- * Hook to upload file to S3
+ * Hook to upload file to S3 via Presigned URL
  */
 export const useUploadToS3 = () => {
     return useMutation({
-        mutationFn: ({
+        mutationFn: async ({
             presignedUrl,
             file,
             onProgress,
@@ -35,7 +26,9 @@ export const useUploadToS3 = () => {
             presignedUrl: string;
             file: File;
             onProgress?: (progress: UploadProgress) => void;
-        }) => examApi.uploadFileToS3(presignedUrl, file, onProgress),
+        }) => {
+            await S3Service.uploadWithPresignedUrl(file, presignedUrl, onProgress);
+        },
     });
 };
 
@@ -46,9 +39,8 @@ export const useSubmitJob = () => {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (request: SubmitJobRequest) => examApi.submitJob(request),
+        mutationFn: (request: SubmitJobRequest) => api.submitJob(request),
         onSuccess: (data) => {
-            // Invalidate job status query to trigger refetch
             queryClient.invalidateQueries({ queryKey: queryKeys.jobStatus(data.jobId) });
         },
     });
@@ -60,25 +52,31 @@ export const useSubmitJob = () => {
 export const useJobStatus = (jobId: string | null, options?: { enabled?: boolean }) => {
     return useQuery<JobStatusResponse>({
         queryKey: queryKeys.jobStatus(jobId ?? ''),
-        queryFn: () => examApi.getJobStatus(jobId!),
+        queryFn: () => api.getJobStatus(jobId!),
         enabled: !!jobId && (options?.enabled ?? true),
         refetchInterval: (query) => {
             const data = query.state.data as JobStatusResponse | undefined;
-            // Stop polling when job is done or failed
             if (data?.Status === 'Done' || data?.Status === 'Failed') {
                 return false;
             }
-            return 2000; // Poll every 2 seconds
+            return 2000;
         },
     });
 };
 
 /**
- * Hook to preview exam file
+ * Hook to preview exam file (Legacy/Direct endpoint)
  */
 export const usePreviewExam = () => {
     return useMutation({
-        mutationFn: (file: File) => examApi.previewExam(file),
+        mutationFn: async (file: File) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await axios.post(`${API_URL}/api/preview`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            return response.data;
+        },
     });
 };
 
@@ -86,7 +84,6 @@ export const usePreviewExam = () => {
  * Combined hook for full upload + submit flow
  */
 export const useCreateJob = () => {
-    const getUploadUrl = useGetUploadUrl();
     const uploadToS3 = useUploadToS3();
     const submitJob = useSubmitJob();
 
@@ -97,10 +94,7 @@ export const useCreateJob = () => {
         rawText?: string
     ): Promise<string> => {
         // 1. Get presigned URL
-        const uploadData = await getUploadUrl.mutateAsync({
-            fileName: file.name,
-            fileType: file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        });
+        const uploadData = await api.getUploadUrl(file.name, file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 
         // 2. Upload to S3
         await uploadToS3.mutateAsync({
@@ -114,7 +108,6 @@ export const useCreateJob = () => {
             jobId: uploadData.jobId,
             fileKey: uploadData.fileKey,
             numVariants,
-            rawText,
         });
 
         return jobResult.jobId;
@@ -122,7 +115,7 @@ export const useCreateJob = () => {
 
     return {
         createJob,
-        isLoading: getUploadUrl.isPending || uploadToS3.isPending || submitJob.isPending,
-        error: getUploadUrl.error || uploadToS3.error || submitJob.error,
+        isLoading: uploadToS3.isPending || submitJob.isPending,
+        error: uploadToS3.error || submitJob.error,
     };
 };
