@@ -11,6 +11,12 @@ from typing import Any, Dict, Optional, Tuple, List
 
 from botocore.exceptions import BotoCoreError, ClientError
 
+# --- PROXY BYPASS FIX ---
+# Unset proxy to ensure direct connection to AWS SQS/S3
+# This fixes "Failed to connect to proxy URL" errors when running locally with a proxy
+for key in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"]:
+    os.environ.pop(key, None)
+
 # Import các module đã tách
 from config import load_settings
 from docx_processor import process_exam_batch
