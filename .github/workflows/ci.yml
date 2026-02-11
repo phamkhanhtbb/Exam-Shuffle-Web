@@ -40,12 +40,11 @@ jobs:
           # Provide dummy env vars so imports don't fail
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
-          AWS_DEFAULT_REGION: ap-southeast-1
-          BUCKET_INPUT: test-bucket
-          BUCKET_OUTPUT: test-bucket
-          QUEUE_URL: https://sqs.ap-southeast-1.amazonaws.com/000000000000/test
-          TABLE_NAME: TestTable
-          REGION: ap-southeast-1
+          AWS_REGION: ap-southeast-1
+          AWS_S3_BUCKET_INPUT: test-bucket-input
+          AWS_S3_BUCKET_OUTPUT: test-bucket-output
+          AWS_SQS_QUEUE_URL: https://sqs.ap-southeast-1.amazonaws.com/000000000000/test-queue
+          AWS_DYNAMODB_TABLE: TestTable
 
   # ============================================
   # JOB 2: Frontend — TypeScript Build Check

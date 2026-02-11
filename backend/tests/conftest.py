@@ -8,12 +8,11 @@ import pytest
 # This prevents boto3/config from failing during test collection
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
-os.environ.setdefault("AWS_DEFAULT_REGION", "ap-southeast-1")
-os.environ.setdefault("BUCKET_INPUT", "test-bucket-input")
-os.environ.setdefault("BUCKET_OUTPUT", "test-bucket-output")
-os.environ.setdefault("QUEUE_URL", "https://sqs.ap-southeast-1.amazonaws.com/000000000000/test-queue")
-os.environ.setdefault("TABLE_NAME", "TestTable")
-os.environ.setdefault("REGION", "ap-southeast-1")
+os.environ.setdefault("AWS_REGION", "ap-southeast-1")
+os.environ.setdefault("AWS_S3_BUCKET_INPUT", "test-bucket-input")
+os.environ.setdefault("AWS_S3_BUCKET_OUTPUT", "test-bucket-output")
+os.environ.setdefault("AWS_SQS_QUEUE_URL", "https://sqs.ap-southeast-1.amazonaws.com/000000000000/test-queue")
+os.environ.setdefault("AWS_DYNAMODB_TABLE", "TestTable")
 
 
 @pytest.fixture

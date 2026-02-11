@@ -25,6 +25,6 @@ frontend/build/
 # --- Misc ---
 *.msi
 debug_regex.js
-test_*.py
-verify_*.py
+/test_*.py
+/verify_*.py
 check_server.py
