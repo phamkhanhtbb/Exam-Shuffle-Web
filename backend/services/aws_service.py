@@ -2,6 +2,7 @@
 AWS Service Layer — centralizes all AWS client initialization and operations.
 Provides typed wrappers for S3, SQS, and DynamoDB interactions.
 """
+import os
 import json
 import time
 import uuid
@@ -18,6 +19,11 @@ class AwsService:
     """Singleton-style service for all AWS operations."""
 
     def __init__(self):
+        # Force disable proxy for AWS connections
+        for env_key in ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']:
+            if env_key in os.environ:
+                del os.environ[env_key]
+
         session = boto3.Session(
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
