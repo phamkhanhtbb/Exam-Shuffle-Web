@@ -1,10 +1,14 @@
 # Stage 1: Build
-FROM node:18-alpine AS build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --legacy-peer-deps
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+# Copy lockfile and package.json first (cache layer)
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 
@@ -13,7 +17,7 @@ ARG REACT_APP_API_URL=https://api.trondeonline.me
 
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
-RUN npm run build
+RUN pnpm run build
 
 # Stage 2: Serve with Nginx
 FROM nginx:alpine
