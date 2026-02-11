@@ -28,3 +28,8 @@ debug_regex.js
 /test_*.py
 /verify_*.py
 check_server.py
+
+# --- Agent & Docs ---
+.agent/
+GEMINI.md
+README.md
