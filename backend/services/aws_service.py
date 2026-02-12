@@ -10,6 +10,7 @@ import logging
 from decimal import Decimal
 
 import boto3
+from botocore.config import Config
 from config import settings
 
 logger = logging.getLogger("server.aws")
@@ -19,19 +20,20 @@ class AwsService:
     """Singleton-style service for all AWS operations."""
 
     def __init__(self):
-        # Force disable proxy for AWS connections
-        for env_key in ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']:
-            if env_key in os.environ:
-                del os.environ[env_key]
+        # Explicitly disable proxies to avoid system/registry proxy issues
+        my_config = Config(
+            region_name=settings.region,
+            proxies={}
+        )
 
         session = boto3.Session(
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
             region_name=settings.region,
         )
-        self.s3 = session.client('s3')
-        self.sqs = session.client('sqs')
-        dynamodb = session.resource('dynamodb')
+        self.s3 = session.client('s3', config=my_config)
+        self.sqs = session.client('sqs', config=my_config)
+        dynamodb = session.resource('dynamodb', config=my_config)
         self.table = dynamodb.Table(settings.table_name)
 
     # --- S3 Operations ---

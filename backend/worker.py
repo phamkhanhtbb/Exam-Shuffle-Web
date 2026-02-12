@@ -10,12 +10,7 @@ import multiprocessing
 from typing import Any, Dict, Optional, Tuple, List
 
 from botocore.exceptions import BotoCoreError, ClientError
-
-# --- PROXY BYPASS FIX ---
-# Unset proxy to ensure direct connection to AWS SQS/S3
-# This fixes "Failed to connect to proxy URL" errors when running locally with a proxy
-for key in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"]:
-    os.environ.pop(key, None)
+from botocore.config import Config
 
 # Import các module đã tách
 from config import load_settings
@@ -299,9 +294,15 @@ def run_worker_process(worker_num: int) -> None:
     # Reload settings để đảm bảo biến môi trường cập nhật nếu cần
     settings = load_settings()
 
-    sqs = boto3.client('sqs', region_name=settings.region)
-    s3 = boto3.client('s3', region_name=settings.region)
-    dynamodb = boto3.resource('dynamodb', region_name=settings.region)
+    # Explicitly disable proxies
+    my_config = Config(
+        region_name=settings.region,
+        proxies={}
+    )
+
+    sqs = boto3.client('sqs', config=my_config)
+    s3 = boto3.client('s3', config=my_config)
+    dynamodb = boto3.resource('dynamodb', config=my_config)
     table = dynamodb.Table(settings.table_name)
 
     logger.info(f"Process-{worker_num} (PID: {os.getpid()}) khởi động.")
