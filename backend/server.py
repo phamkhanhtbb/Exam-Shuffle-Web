@@ -17,6 +17,7 @@ from schemas import (
 from services.aws_service import aws
 from services.answer_parser import parse_answer_map_from_text
 from services.preview_service import process_preview
+from routers import debug_router
 
 # Setup logging
 logging.basicConfig(
@@ -31,6 +32,7 @@ app = FastAPI(
     description="API for exam shuffling and processing",
     version="2.0.0"
 )
+app.include_router(debug_router.router)
 
 # --- METRICS ---
 from prometheus_fastapi_instrumentator import Instrumentator

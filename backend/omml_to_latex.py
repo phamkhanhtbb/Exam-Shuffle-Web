@@ -6,6 +6,7 @@ mathematical equations from Word documents.
 """
 
 import re
+import logging
 from lxml import etree
 
 # OMML namespace
@@ -38,7 +39,7 @@ def omml_to_latex(omml_xml: str) -> str:
         
         return latex
     except Exception as e:
-        print(f"[omml_to_latex] Conversion error: {e}")
+        logging.getLogger("omml_to_latex").error(f"Conversion error: {e}", exc_info=True)
         return None
 
 
