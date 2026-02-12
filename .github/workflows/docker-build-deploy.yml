@@ -78,8 +78,9 @@ jobs:
           script: |
             cd ~/ExamShuffling
 
-            echo "📦 Pulling latest code (for docker-compose & configs)..."
-            git pull origin main
+            echo "📦 Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "🔑 Docker Hub login..."
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
