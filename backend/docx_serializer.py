@@ -242,6 +242,9 @@ class DocxSerializer:
                         "placeholder": f"[{math_id}]"
                     }
                     line_content += f"[!m:${math_id}$]"
+                else:
+                    print(f"[DEBUG] Failed to convert oMath element in paragraph: {paragraph.text[:20]}...")
+
             
             # 2. Handle runs (text, images, inline math)
             elif tag == 'r':

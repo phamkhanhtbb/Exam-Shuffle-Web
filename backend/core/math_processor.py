@@ -10,9 +10,14 @@ class MathProcessor:
         """Convert OMML element to LaTeX"""
         try:
             omml_xml = etree.tostring(element, encoding='unicode')
-            return omml_to_latex(omml_xml)
+            # print(f"[DEBUG] Processing OMML: {omml_xml[:100]}...")
+            
+            latex = omml_to_latex(omml_xml)
+            if not latex:
+                print(f"[DEBUG] omml_to_latex returned empty/None for: {omml_xml[:100]}...")
+            return latex
         except Exception as e:
-            print(f"OMML conversion failed: {e}")
+            print(f"[DEBUG] OMML conversion failed: {e}")
             return None
 
     def extract_latex_from_run(self, run_element) -> Optional[str]:
