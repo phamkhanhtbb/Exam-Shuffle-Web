@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # === BACKEND API SERVER ===
   backend:
-    build: ./backend
+    image: phamkhanhtbb/exam-backend:latest
     container_name: exam-backend
     restart: always
     env_file:
@@ -21,7 +21,7 @@ services:
 
   # === WORKER (SQS Consumer) ===
   worker:
-    build: ./backend
+    image: phamkhanhtbb/exam-backend:latest
     container_name: exam-worker
     restart: always
     command: [ "python", "worker.py" ]
@@ -38,17 +38,7 @@ services:
 
   # === FRONTEND (React + Nginx) ===
   frontend:
-    build:
-      context: ./frontend
-      args:
-        REACT_APP_API_URL: https://api.trondeonline.me
-        REACT_APP_AWS_REGION: ap-southeast-1
-        REACT_APP_S3_BUCKET_INPUT: app-docx-input-team1
-        REACT_APP_S3_BUCKET_OUTPUT: app-docx-output-team1
-        REACT_APP_SQS_QUEUE_URL: ${REACT_APP_SQS_QUEUE_URL}
-        REACT_APP_DYNAMODB_TABLE: DocxJobs
-        REACT_APP_AWS_ACCESS_KEY_ID: ${REACT_APP_AWS_ACCESS_KEY_ID}
-        REACT_APP_AWS_SECRET_ACCESS_KEY: ${REACT_APP_AWS_SECRET_ACCESS_KEY}
+    image: phamkhanhtbb/exam-frontend:latest
     container_name: exam-frontend
     restart: always
     expose:
