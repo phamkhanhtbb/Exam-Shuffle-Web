@@ -30,7 +30,7 @@ logger = logging.getLogger("server")
 app = FastAPI(
     title="ExamShuffling API",
     description="API for exam shuffling and processing",
-    version="2.0.0"
+    version="2.0.1"
 )
 app.include_router(debug_router.router)
 
