@@ -82,25 +82,31 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            echo "🛑 Stopping old containers..."
+            sudo docker compose -f docker-compose.prod.yml --env-file .env.prod down
+
+            echo "🗑️ Removing old images..."
+            sudo docker rmi phamkhanhtbb/exam-backend:latest || true
+            sudo docker rmi phamkhanhtbb/exam-frontend:latest || true
+
             echo "🔑 Docker Hub login..."
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            echo "📥 Pulling pre-built images..."
-            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/exam-backend:latest
-            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/exam-frontend:latest
+            echo "📥 Pulling fresh images..."
+            sudo docker pull phamkhanhtbb/exam-backend:latest
+            sudo docker pull phamkhanhtbb/exam-frontend:latest
 
-            echo "🔄 Updating containers..."
-            echo "🔄 Updating containers..."
-            sudo docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --force-recreate
+            echo "🚀 Starting fresh containers..."
+            sudo docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 
             echo "⏳ Waiting for backend health check..."
-            sleep 10
+            sleep 15
 
             echo "🔄 Restarting Nginx (DNS refresh)..."
             sudo docker restart exam-nginx
 
             echo "✅ Checking container status..."
-            sudo docker ps --format "table {{.Names}}\t{{.Status}}" | grep exam
+            sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | grep exam
 
             echo "🧹 Cleaning up old images..."
             sudo docker image prune -f
