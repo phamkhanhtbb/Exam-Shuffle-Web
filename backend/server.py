@@ -59,6 +59,9 @@ app.add_middleware(
 # --- 1. API CẤP LINK UPLOAD (Presigned URL) ---
 @app.post("/api/get-upload-url", response_model=UploadUrlResponse)
 async def get_upload_url(request: UploadUrlRequest):
+    if not request.fileName.lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ file .docx")
+
     try:
         job_id = aws.generate_job_id()
         presigned_url, s3_key = aws.generate_presigned_upload_url(
