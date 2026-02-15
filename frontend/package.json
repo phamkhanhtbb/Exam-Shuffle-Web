@@ -30,7 +30,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "generate:api": "openapi-generator-cli generate -i http://localhost:5000/openapi.json -g typescript-axios -o src/api/generated --additional-properties=supportsES6=true,withSeparateModelsAndApi=true,apiPackage=api,modelPackage=models"
+    "generate:api": "openapi-generator-cli generate -i http://localhost:5000/openapi.json -g typescript-axios -o src/api/generated --additional-properties=supportsES6=true,withSeparateModelsAndApi=true,apiPackage=api,modelPackage=models",
+    "test": "echo \"No tests specified\" && exit 0",
+    "test:ci": "echo \"No tests specified\" && exit 0"
   },
   "browserslist": [
     ">0.2%",
