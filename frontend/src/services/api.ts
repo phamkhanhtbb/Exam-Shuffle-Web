@@ -1,7 +1,10 @@
 import axios from 'axios';
 
-// Get API URL from environment variable, default to localhost for development
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Detect production by hostname, fallback to env var, then localhost for dev
+const isProduction = typeof window !== 'undefined' && window.location.hostname === 'trondeonline.me';
+const API_URL = isProduction
+    ? 'https://api.trondeonline.me'
+    : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
 const apiClient = axios.create({
     baseURL: API_URL,
