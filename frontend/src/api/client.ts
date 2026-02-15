@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 
-const API_BASE_URL = 'https://api.trondeonline.me';
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_BASE_URL = isLocal ? 'http://localhost:5000' : 'https://api.trondeonline.me';
 
 // Create Axios instance with default config
 const apiClient: AxiosInstance = axios.create({
