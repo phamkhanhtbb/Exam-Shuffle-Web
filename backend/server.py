@@ -40,8 +40,8 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 # CORS middleware
 origins = [
-    "http://localhost:3000",
-    "http://localhost",
+    # "http://localhost:3000",  # Localhost (Development)
+    # "http://localhost",
     "https://trondeonline.me",
     "https://www.trondeonline.me",
     "https://exam-shuffle-web.vercel.app",
