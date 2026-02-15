@@ -3,12 +3,9 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@9 --activate
-
-# Copy lockfile and package.json first (cache layer)
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# Install dependencies using npm
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 
@@ -17,7 +14,7 @@ ARG REACT_APP_API_URL=https://api.trondeonline.me
 
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
-RUN pnpm run build
+RUN npm run build
 
 # Stage 2: Serve with Nginx
 FROM nginx:alpine
