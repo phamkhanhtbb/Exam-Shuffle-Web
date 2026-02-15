@@ -30,9 +30,6 @@ jobs:
           - image: backend
             context: ./backend
             dockerfile: ./backend/Dockerfile
-          - image: frontend
-            context: ./frontend
-            dockerfile: ./frontend/Dockerfile
 
     steps:
       - name: 📥 Checkout code
@@ -58,8 +55,6 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/exam-${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            REACT_APP_API_URL=${{ secrets.REACT_APP_API_URL }}
 
   # ============================================
   # JOB 3: Deploy to EC2 (Pull images, no build on server)
@@ -87,14 +82,12 @@ jobs:
 
             echo "🗑️ Removing old images..."
             sudo docker rmi phamkhanhtbb/exam-backend:latest || true
-            sudo docker rmi phamkhanhtbb/exam-frontend:latest || true
 
             echo "🔑 Docker Hub login..."
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
             echo "📥 Pulling fresh images..."
             sudo docker pull phamkhanhtbb/exam-backend:latest
-            sudo docker pull phamkhanhtbb/exam-frontend:latest
 
             echo "🚀 Starting fresh containers..."
             sudo docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
