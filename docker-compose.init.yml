@@ -27,14 +27,14 @@ services:
     build:
       context: ./frontend
       args:
-        REACT_APP_API_URL: https://api.trondeonline.me
-        REACT_APP_AWS_REGION: ap-southeast-1
-        REACT_APP_S3_BUCKET_INPUT: app-docx-input-team1
-        REACT_APP_S3_BUCKET_OUTPUT: app-docx-output-team1
-        REACT_APP_SQS_QUEUE_URL: ${REACT_APP_SQS_QUEUE_URL}
-        REACT_APP_DYNAMODB_TABLE: DocxJobs
-        REACT_APP_AWS_ACCESS_KEY_ID: ${REACT_APP_AWS_ACCESS_KEY_ID}
-        REACT_APP_AWS_SECRET_ACCESS_KEY: ${REACT_APP_AWS_SECRET_ACCESS_KEY}
+        VITE_API_URL: https://api.trondeonline.me
+        VITE_AWS_REGION: ap-southeast-1
+        VITE_S3_BUCKET_INPUT: app-docx-input-team1
+        VITE_S3_BUCKET_OUTPUT: app-docx-output-team1
+        VITE_SQS_QUEUE_URL: ${VITE_SQS_QUEUE_URL}
+        VITE_DYNAMODB_TABLE: DocxJobs
+        VITE_AWS_ACCESS_KEY_ID: ${VITE_AWS_ACCESS_KEY_ID}
+        VITE_AWS_SECRET_ACCESS_KEY: ${VITE_AWS_SECRET_ACCESS_KEY}
     container_name: exam-frontend
     restart: always
     expose:
