@@ -28,6 +28,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:ci": "react-scripts test --watchAll=false --passWithNoTests",
     "eject": "react-scripts eject",
     "init:tailwind": "tailwindcss init -p",
     "generate:api": "openapi-generator-cli generate -i http://localhost:5000/openapi.json -g typescript-axios -o src/api/generated --additional-properties=supportsES6=true,withSeparateModelsAndApi=true,apiPackage=api,modelPackage=models"

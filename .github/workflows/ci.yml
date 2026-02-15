@@ -75,3 +75,8 @@ jobs:
         run: npm exec tsc --noEmit
         env:
           CI: true
+
+      - name: 🧪 Run Frontend Tests
+        run: npm run test:ci
+        env:
+          CI: true
