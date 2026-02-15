@@ -39,9 +39,17 @@ from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 # CORS middleware
+origins = [
+    "http://localhost:3000",
+    "http://localhost",
+    "https://trondeonline.me",
+    "https://www.trondeonline.me",
+    "https://exam-shuffle-web.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
