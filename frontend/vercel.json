@@ -1,4 +1,5 @@
 {
+    "outputDirectory": "build",
     "rewrites": [
         {
             "source": "/((?!sitemap.xml|robots.txt|static|favicon.ico).*)",
