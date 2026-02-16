@@ -1,0 +1,15 @@
+{
+    "short_name": "ExamShuffling",
+    "name": "ExamShuffling - Trộn đề thi trắc nghiệm",
+    "icons": [
+        {
+            "src": "favicon.svg",
+            "type": "image/svg+xml",
+            "sizes": "any"
+        }
+    ],
+    "start_url": ".",
+    "display": "standalone",
+    "theme_color": "#667eea",
+    "background_color": "#ffffff"
+}
