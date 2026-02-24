@@ -8,11 +8,12 @@ from docx.oxml import OxmlElement, ns
 from docx.oxml.text.paragraph import CT_P
 from docx.text.paragraph import Paragraph
 
-from .constants import OPTION_START_PATTERN
+from .constants import OPTION_START_PATTERN, SUB_OPTION_PATTERN, INLINE_OPTION_PATTERN, INLINE_SUB_OPTION_PATTERN
 from .models import OptionBlock, QuestionBlock, ExamStructure
 from .utils import (
     _recursive_replace_code, _append_element, _clear_body_keep_sectpr,
-    _smart_replace_start, _create_simple_para_element, _normalize_format_and_clean
+    _smart_replace_start, _create_simple_para_element, _normalize_format_and_clean,
+    _clean_marker_only
 )
 import logging
 logger = logging.getLogger("worker")
@@ -150,37 +151,37 @@ def _build_exam_footer(body, sect_pr, footer_elements):
     for el in footer_elements:
         _append_element(body, sect_pr, _fast_copy_element(el))  # OPTIMIZED
 
-def _process_mcq_option_format(opt: OptionBlock, new_lbl: str):
-    """Normalize format for MCQ options (Bold label A. B. C. D.)"""
+def _format_option_block(opt: OptionBlock, new_lbl: str, pattern: re.Pattern):
+    """
+    Chuẩn hóa lựa chọn — GIỮ NGUYÊN định dạng gốc, CHỈ XÓA marker đáp án.
+    1. Xóa marker (underline, color, highlight) — giữ bold/italic/font gốc.
+    2. Thay nhãn cũ (A./a)) bằng nhãn mới, giữ nguyên style của run gốc.
+    """
     first_el = opt.elements[0]
     if isinstance(first_el, CT_P):
         p = Paragraph(first_el, None)
-        _normalize_format_and_clean(p)  # Clean format cũ
+        _clean_marker_only(p)  # Chỉ xóa marker, giữ bold/italic/font
 
-        if OPTION_START_PATTERN.match(p.text):
-            # Trường hợp text thuần túy đã có nhãn cũ (C. ...) -> Thay thế
-            _smart_replace_start(p, OPTION_START_PATTERN, f"{new_lbl}. ")
-            if p.runs: p.runs[0].font.bold = True
+        # Thay nhãn cũ bằng nhãn mới — giữ nguyên formatting gốc
+        if pattern.match(p.text):
+            _smart_replace_start(p, pattern, f"{new_lbl} ")
         else:
-            # Trường hợp Rich Text (công thức) chưa có nhãn
-            # 1. Tạo phần tử Run (<w:r>)
-            r = OxmlElement('w:r')
-            # 2. Tạo Properties cho Run (để set in đậm)
-            rPr = OxmlElement('w:rPr')
-            b = OxmlElement('w:b')
-            rPr.append(b)
-            r.append(rPr)
-            # 3. Tạo phần tử Text (<w:t>)
+            # Rich Text (công thức) chưa có nhãn — chèn mới, copy style từ run đầu
+            new_run_el = OxmlElement('w:r')
+            if p.runs:
+                old_rPr = p.runs[0]._element.find(ns.qn('w:rPr'))
+                if old_rPr is not None:
+                    new_run_el.append(deepcopy(old_rPr))
             t = OxmlElement('w:t')
-            t.set(ns.qn('xml:space'), 'preserve')  # Giữ khoảng trắng
-            t.text = f"{new_lbl}. "
-            r.append(t)
-            # 4. Chèn Run mới tạo vào vị trí đầu tiên của Paragraph (<w:p>)
-            p._element.insert(0, r)
+            t.set(ns.qn('xml:space'), 'preserve')
+            t.text = f"{new_lbl} "
+            new_run_el.append(t)
+            p._element.insert(0, new_run_el)
 
-    # Xử lý các đoạn văn còn lại của option (nếu có)
+    # Xóa marker cho các paragraph còn lại của option (giữ format gốc)
     for el in opt.elements[1:]:
-        if isinstance(el, CT_P): _normalize_format_and_clean(Paragraph(el, None))
+        if isinstance(el, CT_P):
+            _clean_marker_only(Paragraph(el, None))
 
 def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questions=True, shuffle_options=True) -> Tuple[int, List[str]]:
     """Build the main content of the exam (Sections -> Questions)."""
@@ -198,7 +199,10 @@ def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questio
 
         # 2. Section Info
         for el in sec.info_elements:
-            _append_element(body, sect_pr, _fast_copy_element(el))  # OPTIMIZED
+            clone = _fast_copy_element(el)
+            if isinstance(clone, CT_P):
+                _clean_marker_only(Paragraph(clone, None))
+            _append_element(body, sect_pr, clone)
 
         # 3. Questions
         qs = list(sec.questions)
@@ -206,6 +210,12 @@ def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questio
 
         for q in qs:
             new_q = _fast_copy_question(q)  # OPTIMIZED: 3-5x faster than deepcopy
+
+            # --- Xóa marker đánh dấu đáp án trên stem (underline, color, highlight) ---
+            for el in new_q.stem_elements:
+                if isinstance(el, CT_P):
+                    _clean_marker_only(Paragraph(el, None))
+
             # Re-label question stem
             new_prefix = f"Câu {global_q_idx}: "
             replaced_label = False
@@ -216,10 +226,15 @@ def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questio
                     pat = re.compile(r"^\s*(?:Cau|Câu|Bai|Bài)\s+\d+[:.]?\s*", re.IGNORECASE)
                     if pat.match(p.text):
                         _smart_replace_start(p, pat, new_prefix)
+                        if p.runs: p.runs[0].font.bold = True
                         replaced_label = True
                         break
             if not replaced_label:
                 p_new = _create_simple_para_element(new_prefix)
+                # Đảm bảo "Câu X:" in đậm
+                if p_new.findall(ns.qn('w:r')):
+                    r = Run(p_new.find(ns.qn('w:r')), None)
+                    r.font.bold = True
                 new_q.stem_elements.insert(0, p_new)
 
             # Shuffle Options (MCQ and True/False)
@@ -234,10 +249,10 @@ def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questio
                 mcq_corrects = []
                 for i, opt in enumerate(new_q.options):
                     if i >= len(labels): break
-                    new_lbl = labels[i]
-                    if opt.is_correct: mcq_corrects.append(new_lbl)
+                    new_lbl = f"{labels[i]}."
+                    if opt.is_correct: mcq_corrects.append(labels[i])
 
-                    _process_mcq_option_format(opt, new_lbl)
+                    _format_option_block(opt, new_lbl, OPTION_START_PATTERN)
                 
                 # Match Excel gốc: chỉ lấy đáp án đầu tiên cho MCQ
                 current_ans = mcq_corrects[0] if mcq_corrects else ""
@@ -249,11 +264,12 @@ def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questio
                 tf_result = []
                 for i, opt in enumerate(new_q.options):
                     if i >= len(labels_tf): break
-                    new_lbl = labels_tf[i]
+                    new_lbl = f"{labels_tf[i]})"
                     # Đ = correct, S = incorrect
                     tf_result.append("Đ" if opt.is_correct else "S")
                     # Update option label to new position (for rendering)
                     opt.label = new_lbl
+                    _format_option_block(opt, new_lbl, SUB_OPTION_PATTERN)
                 current_ans = "".join(tf_result)
             
             # Short Answer / Fallback (khớp với server.py)

@@ -203,13 +203,41 @@ def _smart_replace_start(paragraph: Paragraph, regex_pattern: re.Pattern, new_pr
 
 
 def _normalize_format_and_clean(paragraph: Paragraph):
-    """Xóa marker và UN-BOLD nội dung để đồng nhất format"""
+    """Xóa mọi định dạng đặc biệt (Bold, Italic, Underline, Color, Highlight) để đồng nhất format"""
     for run in paragraph.runs:
-        run.underline = False
-        run.font.underline = False
-        if run.font.color and run.font.color.rgb: run.font.color.rgb = None
-        if run.font.highlight_color: run.font.highlight_color = None
         run.font.bold = False
+        run.font.italic = False
+        run.font.underline = False
+        run.font.strike = False
+        if run.font.color and run.font.color.rgb:
+            run.font.color.rgb = None
+        if run.font.highlight_color:
+            run.font.highlight_color = None
+        # Xử lý các dạng thức cấp thấp của underline/bold nếu docx-python chưa bắt hết
+        rPr = run._element.get_or_add_rPr()
+        for child in list(rPr):
+            if child.tag in (ns.qn('w:u'), ns.qn('w:b'), ns.qn('w:i'), ns.qn('w:strike'), ns.qn('w:highlight')):
+                rPr.remove(child)
+
+
+
+def _clean_marker_only(paragraph: Paragraph):
+    """Xóa CHỈ các định dạng đánh dấu đáp án (underline, color, highlight) — giữ nguyên bold/italic."""
+    for run in paragraph.runs:
+        run.font.underline = False
+        run.font.strike = False
+        if run.font.color and run.font.color.rgb:
+            run.font.color.rgb = None
+        if run.font.highlight_color:
+            run.font.highlight_color = None
+        # Xử lý cấp thấp
+        rPr = run._element.get_or_add_rPr()
+        for child in list(rPr):
+            if child.tag in (ns.qn('w:u'), ns.qn('w:strike'), ns.qn('w:highlight')):
+                rPr.remove(child)
+            # Xóa color element (w:color)
+            if child.tag == ns.qn('w:color'):
+                rPr.remove(child)
 
 
 def _recursive_replace_code(element, new_code: str):
