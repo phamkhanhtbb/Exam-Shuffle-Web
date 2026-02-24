@@ -1,9 +1,6 @@
-version: '3.8'
-
 services:
   # === BACKEND API SERVER ===
   backend:
-    build: ./backend
     image: phamkhanhtbb/exam-backend:latest
     container_name: exam-backend
     restart: always
@@ -22,7 +19,6 @@ services:
 
   # === WORKER (SQS Consumer) ===
   worker:
-    build: ./backend
     image: phamkhanhtbb/exam-backend:latest
     container_name: exam-worker
     restart: always

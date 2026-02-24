@@ -1,7 +1,8 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const API_BASE_URL = isLocal ? 'http://localhost:5000' : 'https://api.trondeonline.me';
+const isProduction = window.location.hostname === 'trondeonline.me' || window.location.hostname === 'www.trondeonline.me';
+const API_BASE_URL = isProduction ? 'https://api.trondeonline.me' : (isLocal ? 'http://localhost:5000' : 'https://api.trondeonline.me');
 
 // Create Axios instance with default config
 const apiClient: AxiosInstance = axios.create({

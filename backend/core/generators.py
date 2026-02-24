@@ -7,6 +7,8 @@ from docx import Document
 from docx.oxml import OxmlElement, ns
 from docx.oxml.text.paragraph import CT_P
 from docx.text.paragraph import Paragraph
+from docx.shared import Cm
+from docx.enum.text import WD_TAB_ALIGNMENT
 
 from .constants import OPTION_START_PATTERN, SUB_OPTION_PATTERN, INLINE_OPTION_PATTERN, INLINE_SUB_OPTION_PATTERN
 from .models import OptionBlock, QuestionBlock, ExamStructure
@@ -183,6 +185,123 @@ def _format_option_block(opt: OptionBlock, new_lbl: str, pattern: re.Pattern):
         if isinstance(el, CT_P):
             _clean_marker_only(Paragraph(el, None))
 
+
+# =============================================================================
+# COMPACT OPTION LAYOUT — Gộp đáp án ngắn trên 1 dòng để tiết kiệm giấy in
+# =============================================================================
+
+def _has_rich_content(element: OxmlElement) -> bool:
+    """Check if an element contains formulas (oMath), images (drawing/pict), or OLE objects."""
+    for node in element.iter():
+        tag = node.tag
+        if 'oMath' in tag or 'drawing' in tag or 'pict' in tag or 'object' in tag or 'AlternateContent' in tag:
+            return True
+    return False
+
+
+def _get_option_text(element: OxmlElement) -> str:
+    """Extract plain text from an XML element."""
+    text = ""
+    for node in element.iter():
+        if node.tag.endswith('}t') and node.text:
+            text += node.text
+    return text.strip()
+
+
+def _should_compact_options(options: List[OptionBlock]) -> str:
+    """
+    Decide layout for MCQ options based on content analysis.
+    Returns: '4col', '2col', or 'block'
+    """
+    if not options or len(options) < 2:
+        return "block"
+
+    max_text_len = 0
+    for opt in options:
+        # Multi-element options (multi-paragraph) → block
+        if len(opt.elements) != 1:
+            return "block"
+        el = opt.elements[0]
+        # Rich content (formula, image) → block
+        if _has_rich_content(el):
+            return "block"
+        text = _get_option_text(el)
+        max_text_len = max(max_text_len, len(text))
+
+    # Threshold-based layout decision
+    if len(options) == 4 and max_text_len <= 20:
+        return "4col"
+    elif max_text_len <= 45 and len(options) % 2 == 0:
+        return "2col"
+    else:
+        return "block"
+
+
+def _render_compact_options(body, sect_pr, options: List[OptionBlock], layout: str):
+    """
+    Merge options into compact rows using tab stops for column alignment.
+    
+    Layout '4col': A. ...  B. ...  C. ...  D. ...  (1 row)
+    Layout '2col': A. ...  B. ...  (row 1)
+                   C. ...  D. ...  (row 2)
+    """
+    cols = 4 if layout == "4col" else 2
+    
+    # Tab stop positions for even column distribution
+    # Page width ~16cm usable, distribute evenly
+    if cols == 4:
+        tab_positions = [Cm(4.5), Cm(9.0), Cm(13.5)]
+    else:
+        tab_positions = [Cm(8.5)]
+
+    # Group options into rows
+    for row_start in range(0, len(options), cols):
+        row_opts = options[row_start:row_start + cols]
+        
+        # Create a new merged paragraph
+        merged_p = OxmlElement('w:p')
+        
+        # Copy paragraph properties (spacing, alignment) from the first option
+        first_el = row_opts[0].elements[0]
+        if isinstance(first_el, CT_P):
+            pPr_source = first_el.find(ns.qn('w:pPr'))
+            if pPr_source is not None:
+                merged_p.append(deepcopy(pPr_source))
+        
+        # Set up tab stops on the paragraph
+        pPr = merged_p.find(ns.qn('w:pPr'))
+        if pPr is None:
+            pPr = OxmlElement('w:pPr')
+            merged_p.insert(0, pPr)
+        
+        tabs_el = OxmlElement('w:tabs')
+        for pos in tab_positions:
+            tab = OxmlElement('w:tab')
+            tab.set(ns.qn('w:val'), 'left')
+            tab.set(ns.qn('w:pos'), str(int(pos.emu / 914400 * 1440)))  # EMU → twips
+            tabs_el.append(tab)
+        pPr.append(tabs_el)
+        
+        # Append each option's runs, separated by tab characters
+        for opt_idx, opt in enumerate(row_opts):
+            # Insert tab character before 2nd, 3rd, 4th option
+            if opt_idx > 0:
+                tab_run = OxmlElement('w:r')
+                tab_char = OxmlElement('w:tab')
+                tab_run.append(tab_char)
+                merged_p.append(tab_run)
+            
+            # Copy all runs from this option's first (and only) element
+            el = opt.elements[0]
+            if isinstance(el, CT_P):
+                for child in el:
+                    if child.tag == ns.qn('w:pPr'):
+                        continue  # Skip paragraph properties (already set)
+                    merged_p.append(deepcopy(child))
+        
+        _append_element(body, sect_pr, merged_p)
+
+
 def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questions=True, shuffle_options=True) -> Tuple[int, List[str]]:
     """Build the main content of the exam (Sections -> Questions)."""
     rng = random.Random(seed)
@@ -281,8 +400,18 @@ def _build_exam_body(body, sect_pr, target_doc, structure, seed, shuffle_questio
 
             # Render Stem & Options
             for el in new_q.stem_elements: _append_element(body, sect_pr, el)
-            for opt in new_q.options:
-                for el in opt.elements: _append_element(body, sect_pr, el)
+            
+            # Compact layout: merge short options onto fewer lines
+            if new_q.mode == 'mcq':
+                layout = _should_compact_options(new_q.options)
+                if layout != "block":
+                    _render_compact_options(body, sect_pr, new_q.options, layout)
+                else:
+                    for opt in new_q.options:
+                        for el in opt.elements: _append_element(body, sect_pr, el)
+            else:
+                for opt in new_q.options:
+                    for el in opt.elements: _append_element(body, sect_pr, el)
             
             global_q_idx += 1
             
