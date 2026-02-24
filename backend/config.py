@@ -1,8 +1,17 @@
+"""
+Configuration Management.
+
+This module handles loading environment variables from a .env file and 
+providing a structured 'Settings' object for the application. 
+It ensures that all critical cloud infrastructure details (AWS keys, bucket names) 
+are present before the application starts.
+"""
+
 import os
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
-# Load biến môi trường từ file .env
+# Load key-value pairs from .env into environment variables.
 load_dotenv()
 
 

@@ -1,6 +1,7 @@
 """
 ExamShuffling API — Thin Controller Layer.
-All business logic is delegated to the services package.
+This file handles the API endpoints, middleware setup, and delegates 
+complex tasks to dedicated service modules.
 """
 import logging
 
@@ -19,48 +20,62 @@ from services.answer_parser import parse_answer_map_from_text
 from services.preview_service import process_preview
 from routers import debug_router
 
-# Setup logging
+# -- 1. Logging Setup --
+# We configure logging to track events, errors, and information about 
+# incoming requests and system performance.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logger = logging.getLogger("server")
 
-# --- FASTAPI APP ---
+# -- 2. FastAPI Application Initialization --
+# Initialize the main FastAPI application with metadata.
 app = FastAPI(
     title="ExamShuffling API",
     description="API for exam shuffling and processing",
     version="2.0.1"
 )
+
+# Include debug roots for troubleshooting purposes.
 app.include_router(debug_router.router)
 
-# --- METRICS ---
+# -- 3. Monitoring (Metrics) --
+# Expose a /metrics endpoint for Prometheus to monitor application health 
+# and performance metrics.
 from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
-# CORS middleware
+# -- 4. CORS Middleware Configuration --
+# Define which origins (websites) are allowed to make requests to this API.
+# This prevents unauthorized cross-origin requests.
 origins = [
-    "http://localhost:3000",  # Localhost (Development)
-    "http://localhost",
-    "https://trondeonline.me",
-    "https://www.trondeonline.me",
-    "https://exam-shuffle-web.vercel.app",
+    "http://localhost:3000",        # Local development (React)
+    "http://localhost",              # Local server
+    "https://trondeonline.me",       # Production domain
+    "https://www.trondeonline.me",   # Production domain (www)
+    "https://exam-shuffle-web.vercel.app", # Vercel preview deployment
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],           # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],           # Allow all headers
 )
 
+# -- 5. API Endpoints --
 
-# --- 1. API CẤP LINK UPLOAD (Presigned URL) ---
+# 5.1 Endpoint: Get S3 Presigned Upload URL
+# Step 1: User requests a link to upload their DOCX file directly to S3.
+# Step 2: Server checks if the file is a valid .docx.
+# Step 3: Server generates a unique Job ID and an S3 Presigned URL.
+# Step 4: Server creates a record in the database (DynamoDB) for this new job.
 @app.post("/api/get-upload-url", response_model=UploadUrlResponse)
 async def get_upload_url(request: UploadUrlRequest):
     if not request.fileName.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ file .docx")
+        raise HTTPException(status_code=400, detail="Only .docx files are supported.")
 
     try:
         job_id = aws.generate_job_id()
@@ -75,35 +90,41 @@ async def get_upload_url(request: UploadUrlRequest):
             fileKey=s3_key,
         )
     except Exception as e:
-        logger.error(f"Error generating URL: {e}")
+        logger.error(f"Error generating Upload URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# --- 2. API KÍCH HOẠT XỬ LÝ ---
+# 5.2 Endpoint: Submit Job for Processing
+# Step 1: After uploading to S3, the user calls this API to start the processing.
+# Step 2: If a raw text version of the answer key is provided, the server attempts to parse it.
+# Step 3: Server updates the job status to "Queued" in the database.
+# Step 4: Server sends a message to the SQS queue to be picked up by a worker process.
 @app.post("/api/submit-job", response_model=SubmitJobResponse)
 async def submit_job(request: SubmitJobRequest):
     if not request.jobId or not request.fileKey:
         raise HTTPException(status_code=400, detail="Missing jobId or fileKey")
 
-    # Parse answer map from rawText if provided
     answer_map = None
     if request.rawText:
         try:
-            logger.info(f"Extracting Answer Map from RawText for job {request.jobId}...")
+            logger.info(f"Extracting Answer Map from text for job {request.jobId}...")
+            # Delegate parsing of answer keys from raw text to the service layer.
             answer_map = parse_answer_map_from_text(request.rawText)
             logger.info(f"Extracted {len(answer_map)} answers.")
         except Exception as e:
             logger.error(f"Failed to parse rawText for job {request.jobId}: {e}")
 
     try:
+        # Update DynamoDB record.
         aws.update_job_status(request.jobId, "Queued", num_variants=request.numVariants)
 
+        # Send processing instructions to SQS.
         aws.send_job_message({
             "jobId": request.jobId,
             "fileKey": request.fileKey,
             "numVariants": request.numVariants,
             "status": "Queued",
             "answerMap": answer_map,
+            "examCodes": request.examCodes,
         })
 
         return SubmitJobResponse(
@@ -114,8 +135,9 @@ async def submit_job(request: SubmitJobRequest):
         logger.error(f"Error submitting job: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# --- 3. API POLLING TRẠNG THÁI ---
+# 5.3 Endpoint: Poll Job Status
+# Step 1: Frontend repeatedly calls this to check if the job is finished.
+# Step 2: Server fetches the latest status from the database.
 @app.get("/api/status/{job_id}", response_model=JobStatusResponse)
 async def get_status(job_id: str):
     try:
@@ -135,8 +157,11 @@ async def get_status(job_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# --- 4. API PREVIEW ---
+# 5.4 Endpoint: Instant Preview
+# Step 1: User uploads a DOCX for immediate parsing and preview (synchronous).
+# Step 2: Server reads file contents.
+# Step 3: Server triggers the preview processing service (parsing questions, formulas, etc.).
+# Step 4: Server returns the parsed exam data for the frontend to render.
 @app.post("/api/preview", response_model=PreviewResponse)
 async def preview_exam(file: UploadFile = File(...)):
     if not file.filename:
@@ -144,25 +169,28 @@ async def preview_exam(file: UploadFile = File(...)):
 
     try:
         contents = await file.read()
+        # Synchronously process the file for preview.
         preview_data = await process_preview(contents)
 
         return PreviewResponse(status="success", data=preview_data)
 
     except ExamError as e:
+        # Known application-specific errors.
         logger.warning(f"Preview Logic Error: {e.message}")
         raise HTTPException(status_code=400, detail=e.message)
     except HTTPException:
         raise
     except Exception as e:
+        # Unexpected errors (corrupt files, etc.).
         logger.error(f"Preview Error: {str(e)}", exc_info=True)
         if "BadZipFile" in str(type(e).__name__):
-            raise HTTPException(status_code=400, detail="File DOCX bị lỗi (Bad Zip). Vui lòng thử lại với file khác.")
+            raise HTTPException(status_code=400, detail="DOCX file is corrupted (Bad Zip). Please try another file.")
         if "PackageNotFoundError" in str(type(e).__name__):
-            raise HTTPException(status_code=400, detail="File không đúng định dạng DOCX hoặc bị hỏng.")
-        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống khi xử lý file: {str(e)}")
+            raise HTTPException(status_code=400, detail="File is not a valid DOCX format.")
+        raise HTTPException(status_code=500, detail=f"System error while processing file: {str(e)}")
 
-
-# --- EXCEPTION HANDLERS ---
+# -- 6. Exception Handlers --
+# Global handler for ExamError to return uniform error objects to the frontend.
 @app.exception_handler(ExamError)
 async def exam_error_handler(request, exc: ExamError):  # type: ignore
     return JSONResponse(
@@ -170,8 +198,8 @@ async def exam_error_handler(request, exc: ExamError):  # type: ignore
         content={"detail": exc.message, "code": exc.code}
     )
 
-
-# --- MAIN ---
+# -- 7. Server Entry Point --
+# Starts the server using Uvicorn on port 5000.
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5000)
