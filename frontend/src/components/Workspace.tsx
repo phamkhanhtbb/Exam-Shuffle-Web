@@ -5,12 +5,22 @@ import EditorPanel, { EditorPanelHandle } from './EditorPanel';
 import PaneResizer from './PaneResizer';
 import type { PreviewData } from '../hooks/useExamEditor';
 
+/**
+ * Workspace Component.
+ * The central container for the two main interaction areas: 
+ * the interactive Preview and the raw Text Editor.
+ * 
+ * Features:
+ * - Desktop: Side-by-side view with a draggable resizer.
+ * - Mobile: Tabbed view to switch between Preview and Editor.
+ */
+
 interface WorkspaceProps {
     previewData: PreviewData | null;
     isPreviewLoading: boolean;
     editorRef: React.RefObject<EditorPanelHandle>;
     isMobile: boolean;
-    leftWidth: number;
+    leftWidth: number;                  // Width (%) of the left panel (Preview).
     containerRef: React.RefObject<HTMLDivElement>;
     startResizing: () => void;
     correctAnswers: Map<number, string>;
@@ -36,10 +46,6 @@ interface WorkspaceProps {
     onTextChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
 }
 
-/**
- * Workspace layout — manages mobile tab bar and renders
- * PreviewPanel + PaneResizer + EditorPanel side by side.
- */
 const Workspace: React.FC<WorkspaceProps> = ({
     previewData,
     isPreviewLoading,
@@ -56,6 +62,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     onShortAnswerChange,
     onTextChange,
 }) => {
+    // Local state to track the active view on mobile devices.
     const [activeTab, setActiveTab] = useState<'preview' | 'editor'>('preview');
 
     return (
@@ -63,7 +70,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             className="workspace-wrapper flex w-full h-full bg-gray-100 overflow-hidden animate-expand"
             ref={containerRef}
         >
-            {/* Mobile Tab Bar */}
+            {/* 1. Mobile Tab Navigation (Hidden on Desktop) */}
             {isMobile && (
                 <div className="mobile-tab-bar">
                     <button
@@ -81,7 +88,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 </div>
             )}
 
-            {/* Preview Panel */}
+            {/* 2. Left Panel: Interactive Preview of the Exam. */}
             {(!isMobile || activeTab === 'preview') && (
                 <PreviewPanel
                     width={leftWidth}
@@ -97,10 +104,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 />
             )}
 
-            {/* Resizer: desktop only */}
+            {/* 3. Central Divider: Draggable handle to resize panels (Desktop only). */}
             {!isMobile && <PaneResizer onMouseDown={startResizing} />}
 
-            {/* Editor Panel */}
+            {/* 4. Right Panel: Raw Text Editor for manual corrections. */}
             {(!isMobile || activeTab === 'editor') && (
                 <EditorPanel
                     ref={editorRef}

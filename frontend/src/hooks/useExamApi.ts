@@ -3,17 +3,19 @@ import { api, SubmitJobRequest, JobStatusResponse } from '../services/api';
 import { S3Service } from '../services/s3Service';
 import { UploadProgress } from '../types';
 
-
-
-
-// Query keys for cache management
+/**
+ * CACHE KEYS for React Query.
+ * Used to manage and invalidate server state cache.
+ */
 export const queryKeys = {
     jobStatus: (jobId: string) => ['jobStatus', jobId] as const,
     preview: (fileName: string) => ['preview', fileName] as const,
 };
 
 /**
- * Hook to upload file to S3 via Presigned URL
+ * HOOK: UPLOAD TO S3.
+ * Handles the direct multipart/form-data upload to AWS S3 using a temporary 
+ * presigned URL provided by the backend.
  */
 export const useUploadToS3 = () => {
     return useMutation({
@@ -21,18 +23,22 @@ export const useUploadToS3 = () => {
             presignedUrl,
             file,
             onProgress,
+            contentType,
         }: {
             presignedUrl: string;
             file: File;
             onProgress?: (progress: UploadProgress) => void;
+            contentType?: string;
         }) => {
-            await S3Service.uploadWithPresignedUrl(file, presignedUrl, onProgress);
+            await S3Service.uploadWithPresignedUrl(file, presignedUrl, onProgress, contentType);
         },
     });
 };
 
 /**
- * Hook to submit job for processing
+ * HOOK: SUBMIT JOB.
+ * Sends the processing request to the /submit-job endpoint.
+ * On success, it invalidates the job status query to trigger an immediate UI update.
  */
 export const useSubmitJob = () => {
     const queryClient = useQueryClient();
@@ -46,7 +52,12 @@ export const useSubmitJob = () => {
 };
 
 /**
- * Hook to poll job status
+ * HOOK: JOB STATUS POLLING.
+ * Periodically fetches the status of a job from DynamoDB.
+ * 
+ * Logic:
+ * - Polls every 2 seconds.
+ * - Auto-stops (refetchInterval: false) once the status is 'Done' or 'Failed'.
  */
 export const useJobStatus = (jobId: string | null, options?: { enabled?: boolean }) => {
     return useQuery<JobStatusResponse>({
@@ -55,16 +66,18 @@ export const useJobStatus = (jobId: string | null, options?: { enabled?: boolean
         enabled: !!jobId && (options?.enabled ?? true),
         refetchInterval: (query) => {
             const data = query.state.data as JobStatusResponse | undefined;
+            // Stop polling if terminal state reached.
             if (data?.Status === 'Done' || data?.Status === 'Failed') {
                 return false;
             }
-            return 2000;
+            return 2000; // 2 seconds interval.
         },
     });
 };
 
 /**
- * Hook to preview exam file (Unified)
+ * HOOK: PREVIEW EXAM.
+ * Calls the backend to parse the uploaded DOCX and return its structured raw text.
  */
 export const usePreviewExam = () => {
     return useMutation({
@@ -73,10 +86,11 @@ export const usePreviewExam = () => {
 };
 
 /**
- * Combined hook for full upload + submit flow
- */
-/**
- * Combined hook for full upload + submit flow
+ * COMBINED HOOK: CREATE JOB WORKFLOW.
+ * Orchestrates the 3-step sequence:
+ * 1. Get Presigned URL from Backend.
+ * 2. Upload physical file to S3.
+ * 3. Submit metadata/job-params to SQS via Backend.
  */
 export const useCreateJob = () => {
     const uploadToS3 = useUploadToS3();
@@ -86,24 +100,29 @@ export const useCreateJob = () => {
         file: File,
         numVariants: number,
         onProgress?: (progress: UploadProgress) => void,
-        rawText?: string
+        rawText?: string,
+        examCodes?: string
     ): Promise<string> => {
-        // 1. Get presigned URL
-        const uploadData = await api.getUploadUrl(file.name, file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        const contentType = file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-        // 2. Upload to S3
+        // STEP 1: Handshake with backend to get an S3 upload "ticket".
+        const uploadData = await api.getUploadUrl(file.name, contentType);
+
+        // STEP 2: Physical upload.
         await uploadToS3.mutateAsync({
             presignedUrl: uploadData.uploadUrl,
             file,
             onProgress,
+            contentType,
         });
 
-        // 3. Submit job
+        // STEP 3: Submit to queue.
         const jobResult = await submitJob.mutateAsync({
             jobId: uploadData.jobId,
             fileKey: uploadData.fileKey,
             numVariants,
-            rawText: rawText // Explicit assignment to avoid shorthand confusion if any
+            rawText: rawText,
+            examCodes: examCodes,
         });
 
         return jobResult.jobId;

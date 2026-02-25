@@ -216,8 +216,8 @@ def _should_compact_options(options: List[OptionBlock]) -> str:
     
     Rules:
     - Only 2 or 4 options per row (never 3)
-    - 4col: all options ≤ 35 chars, exactly 4 options, text-only
-    - 2col: all options ≤ 70 chars, even number of options, text-only
+    - 4col: all options ≤ 10 chars, exactly 4 options, text-only
+    - 2col: all options ≤ 45 chars, even number of options, text-only
     - block: anything else (rich content, long text, odd count)
     """
     if not options or len(options) < 2:
@@ -236,9 +236,9 @@ def _should_compact_options(options: List[OptionBlock]) -> str:
         max_text_len = max(max_text_len, len(text))
 
     # Threshold-based layout decision
-    if len(options) == 4 and max_text_len <= 35:
+    if len(options) == 4 and max_text_len <= 10:
         return "4col"
-    elif max_text_len <= 70 and len(options) % 2 == 0:
+    elif max_text_len <= 45 and len(options) % 2 == 0:
         return "2col"
     else:
         return "block"
@@ -257,9 +257,9 @@ def _render_compact_options(body, sect_pr, options: List[OptionBlock], layout: s
     # Tab stop positions for even column distribution
     # Page width ~16cm usable, distribute evenly
     if cols == 4:
-        tab_positions = [Cm(4.5), Cm(9.0), Cm(13.5)]
+        tab_positions = [Cm(4.0), Cm(8.0), Cm(12.0)]
     else:
-        tab_positions = [Cm(8.5)]
+        tab_positions = [Cm(8.0)]
 
     # Group options into rows
     for row_start in range(0, len(options), cols):
@@ -281,6 +281,16 @@ def _render_compact_options(body, sect_pr, options: List[OptionBlock], layout: s
             pPr = OxmlElement('w:pPr')
             merged_p.insert(0, pPr)
         
+        # Remove any existing tab stops from source pPr to prevent conflicts
+        existing_tabs = pPr.findall(ns.qn('w:tabs'))
+        for old_tabs in existing_tabs:
+            pPr.remove(old_tabs)
+        
+        # Remove paragraph indentation to maximize usable width for compact layout
+        existing_ind = pPr.findall(ns.qn('w:ind'))
+        for old_ind in existing_ind:
+            pPr.remove(old_ind)
+
         tabs_el = OxmlElement('w:tabs')
         for pos in tab_positions:
             tab = OxmlElement('w:tab')

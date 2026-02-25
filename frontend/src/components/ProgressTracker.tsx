@@ -3,6 +3,13 @@ import { CheckCircle, Clock, AlertCircle, Loader } from 'lucide-react';
 import { JobStatus } from '../types';
 import './ProgressTracker.css';
 
+/**
+ * PROGRESS TRACKER COMPONENT
+ * 
+ * Provides a detailed status indicator for a background processing job.
+ * Maps the internal 'JobStatus' string to a rich visual representation (Icon, Color, Label).
+ */
+
 interface ProgressTrackerProps {
   status: JobStatus;
   uploadProgress?: number;
@@ -14,6 +21,9 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
   uploadProgress = 0,
   errorMessage,
 }) => {
+  /**
+   * Configuration object for each possible job state.
+   */
   const getStatusConfig = () => {
     switch (status) {
       case 'Queued':
@@ -58,6 +68,7 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
 
   return (
     <div className="progress-tracker">
+      {/* 1. Header: Primary status label and icon. */}
       <div className="progress-header">
         <div className="status-icon" style={{ color: config.color }}>
           {config.icon}
@@ -68,6 +79,7 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
         </div>
       </div>
 
+      {/* 2. Upload Bar: Only shown while the file is physically moving to S3. */}
       {uploadProgress > 0 && uploadProgress < 100 && (
         <div className="upload-progress">
           <div className="progress-bar">
@@ -80,6 +92,7 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
         </div>
       )}
 
+      {/* 3. Steps Breakdown: Shows progress through the server-side pipeline. */}
       {status === 'Processing' && (
         <div className="processing-steps">
           <div className="step">

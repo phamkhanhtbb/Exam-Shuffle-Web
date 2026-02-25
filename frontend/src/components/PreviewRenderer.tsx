@@ -1,3 +1,14 @@
+/**
+ * PREVIEW RENDERER
+ * 
+ * This is the 'brain' of the interactive document preview. 
+ * It performs a multi-stage process:
+ * 1. PARSING: Scans the raw text (containing custom markers) and builds a structured block list.
+ * 2. STRUCTURING: Identifies Questions (Part I, II, III), Tables, and plain Text.
+ * 3. TOKENIZING: Within each line, identifies LaTeX equations, images, and formatting.
+ * 4. RENDERING: Converts the structure into interactive React components.
+ */
+
 import React, { useMemo } from 'react';
 import { Check, X } from 'lucide-react';
 import katex from 'katex';
@@ -472,6 +483,10 @@ interface QuestionCardProps {
   currentAnswer?: string;
 }
 
+/**
+ * QUESTION CARD COMPONENT.
+ * Renders the question number, content, and interactive options.
+ */
 const QuestionCard: React.FC<QuestionCardProps> = ({
   questionIndex,
   questionType,
@@ -487,14 +502,15 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onLineClick,
   currentAnswer
 }) => {
+  // Trigger the editor scrolling when clicking on question text or header.
   const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Stop bubble just in case
+    e.stopPropagation();
     if (onLineClick) onLineClick(sourceLineNumber);
   };
 
   return (
     <div className="question-card mb-6 rounded-lg p-2 -m-2">
-      {/* Header - Clickable for sync */}
+      {/* 1. Header: Shows 'Câu X.' and is clickable for synchronization. */}
       <div
         className="question-header flex items-center gap-2 mb-3 flex-wrap cursor-pointer hover:opacity-80 transition-opacity w-fit"
         onClick={handleClick}
@@ -505,6 +521,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </span>
       </div>
 
+      {/* 2. Content: Renders question text and nested tables. */}
       {contentLines.length > 0 && (
         <div
           className="question-content-box border border-gray-200 rounded-lg p-4 mb-4 bg-white cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
@@ -512,7 +529,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           title="Click để xem trong editor"
         >
           {(() => {
-            // Group table rows and render them inline
+            // Group consecutive [TABLE_ROW] items and render them as a <table>.
             const elements: React.ReactNode[] = [];
             let tableBuffer: string[][] = [];
 
@@ -539,19 +556,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               }
             };
 
-            contentLines.forEach((line, idx) => {
+            contentLines.forEach((line: string, idx: number) => {
               if (line.startsWith('[TABLE_ROW]')) {
-                // Extract actual table row content and parse cells
                 const rowContent = line.replace('[TABLE_ROW]', '').trim();
                 const cells = rowContent
                   .replace(/^\[\*\s*/, '').replace(/\s*\*\]$/, '')
                   .split('|')
-                  .map(cell => cleanContentText(cell.trim()));
+                  .map((cell: string) => cleanContentText(cell.trim()));
                 tableBuffer.push(cells);
               } else {
-                // Flush any pending table
                 flushTable();
-                // Render normal content line
                 elements.push(
                   <div key={idx} className="leading-relaxed mb-1 last:mb-0">
                     {parseTokens(line, assetsMap)}
@@ -560,17 +574,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               }
             });
 
-            // Flush remaining table rows
-            flushTable();
-
+            flushTable(); // Final flush.
             return elements;
           })()}
         </div>
       )}
 
+      {/* 3. Multiple Choice Options (A, B, C, D). */}
       {uppercaseAnswers.length > 0 && (
         <div className="answer-options space-y-2">
-          {uppercaseAnswers.map((answer) => (
+          {uppercaseAnswers.map((answer: any) => (
             <MultipleChoiceOption
               key={answer.letter}
               letter={answer.letter}
@@ -583,9 +596,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
       )}
 
+      {/* 4. True/False Options (a), b), c), d)). */}
       {lowercaseAnswers.length > 0 && (
         <div className="answer-options space-y-2">
-          {lowercaseAnswers.map((answer) => (
+          {lowercaseAnswers.map((answer: any) => (
             <TrueFalseOption
               key={answer.letter}
               letter={answer.letter}
@@ -598,6 +612,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
       )}
 
+      {/* 5. Short Answer Input Field. */}
       {questionType === 'shortanswer' && (
         <div className="answer-input-section mt-4">
           <div className="flex items-center gap-3">
@@ -608,7 +623,6 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               placeholder="Nhập đáp án..."
               value={currentAnswer || ''}
               onChange={(e) => onShortAnswerChange?.(questionIndex, e.target.value, sourceLineNumber)}
-            // No onClick needed here, parent doesn't capture anymore
             />
           </div>
         </div>
@@ -657,13 +671,21 @@ const TrueFalseOption: React.FC<TrueFalseOptionProps> = ({ letter, content, isTr
 };
 
 // ... parseTokens ...
+/**
+ * TOKEN PARSER & RENDERER.
+ * Scans a string of text for specific tokens (LaTeX, Images, Bold) 
+ * and replaces them with React components.
+ */
 const parseTokens = (text: string, assetsMap: AssetMap): React.ReactNode => {
   let cleanText = cleanContentText(text);
   if (!cleanText.trim()) return null;
+
+  // Regex to identify: [!b:bold], [img:$id$], [!m:$id$], or $inline_latex$.
   const regex = /(\[!b:.*?]|\[img:\$.*?\$]|\[!m:\$.*?\$]|\$[^$]+\$)/g;
   const parts = cleanText.split(regex);
 
   return parts.map((part, index) => {
+    // 1. INLINE LATEX: $x^2 + y^2 = r^2$
     if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
       const latex = part.slice(1, -1);
       try {
@@ -671,16 +693,22 @@ const parseTokens = (text: string, assetsMap: AssetMap): React.ReactNode => {
         return <span key={index} className="inline-block mx-0.5" dangerouslySetInnerHTML={{ __html: html }} />;
       } catch { return <span key={index}>{part}</span>; }
     }
+
+    // 2. BOLD TEXT: [!b:Text]
     if (part.startsWith('[!b:')) {
       const content = part.slice(4, -1);
       return <strong key={index} className="font-bold">{content}</strong>;
     }
+
+    // 3. IMAGE ASSETS: [img:$asset_id$]
     if (part.startsWith('[img:$')) {
       const id = part.slice(6, -2);
       const asset = assetsMap[id];
       if (asset && asset.src) return <img key={index} src={asset.src} alt="img" className="block max-w-full my-2 rounded" />;
       return <span key={index} className="text-red-500 text-xs italic">[Ảnh lỗi]</span>;
     }
+
+    // 4. COMPLEX MATH ASSETS (e.g. from Word Equation Editor): [!m:$asset_id$]
     if (part.startsWith('[!m:$')) {
       const id = part.slice(5, -2);
       const asset = assetsMap[id];
@@ -692,9 +720,11 @@ const parseTokens = (text: string, assetsMap: AssetMap): React.ReactNode => {
           return <span key={index} className="inline-block px-2 py-0.5 rounded bg-fuchsia-50 border border-fuchsia-200 mx-0.5"><span className="text-fuchsia-600 font-mono text-sm">{asset.latex}</span></span>;
         }
       }
-      // No LaTeX available → show mathtype_N placeholder text
+      // Placeholder if LaTeX conversion failed.
       return <span key={index} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-fuchsia-50 border border-fuchsia-200 mx-0.5" title={`MathType ID: ${id}`}><span className="text-fuchsia-700 font-mono text-sm">{id}</span></span>;
     }
+
+    // 5. Normal Text.
     return <span key={index}>{part}</span>;
   });
 };

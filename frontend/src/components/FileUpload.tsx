@@ -2,6 +2,13 @@ import React, { useState, useRef, DragEvent } from 'react';
 import { Upload, FileText, X } from 'lucide-react';
 import './FileUpload.css';
 
+/**
+ * FILE UPLOAD COMPONENT
+ * 
+ * Handles the initial ingestion of the DOCX file.
+ * Supports both drag-and-drop and manual file browsing.
+ */
+
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
   disabled?: boolean;
@@ -16,6 +23,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // -- Drag and Drop Handlers --
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -41,6 +50,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     }
   };
 
+  /**
+   * Internal helper to update state and notify the parent component (App.tsx).
+   */
   const handleFileSelection = (file: File) => {
     setSelectedFile(file);
     onFileSelect(file);
@@ -53,6 +65,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     }
   };
 
+  /**
+   * Resets the input so the user can select a different file.
+   */
   const handleRemoveFile = () => {
     setSelectedFile(null);
     if (fileInputRef.current) {
@@ -60,6 +75,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     }
   };
 
+  /**
+   * Converts raw bytes to a human-readable string (KB, MB).
+   */
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -71,6 +89,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   return (
     <div className="file-upload-container">
       {!selectedFile ? (
+        /* 1. DROP ZONE: Visible when no file is selected. */
         <div
           className={`upload-area ${isDragging ? 'dragging' : ''} ${disabled ? 'disabled' : ''}`}
           onDragOver={handleDragOver}
@@ -85,6 +104,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             Chọn file từ máy tính
           </button>
           <p className="file-hint">Chỉ chấp nhận file .docx (tối đa 50MB)</p>
+          {/* Hidden native file input element. */}
           <input
             ref={fileInputRef}
             type="file"
@@ -95,6 +115,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           />
         </div>
       ) : (
+        /* 2. FILE PREVIEW: Visible after a file has been selected. */
         <div className="selected-file">
           <div className="file-info">
             <FileText className="file-icon" size={32} />
@@ -103,6 +124,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               <p>{formatFileSize(selectedFile.size)}</p>
             </div>
           </div>
+          {/* Action button to clear the selection. */}
           {!disabled && (
             <button
               className="remove-button"

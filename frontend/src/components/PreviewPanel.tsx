@@ -2,6 +2,16 @@ import React from 'react';
 import { FileText, Loader2 } from 'lucide-react';
 import PreviewRenderer, { AssetMap } from './PreviewRenderer';
 
+/**
+ * PREVIEW PANEL COMPONENT
+ * 
+ * A container representing the 'Paper' view of the exam.
+ * It handles:
+ * 1. Loading states during file analysis.
+ * 2. Visual layout (A4 paper mimicry).
+ * 3. Embedding the 'PreviewRenderer' for the actual document content.
+ */
+
 interface PreviewPanelProps {
     width: number;
     isLoading: boolean;
@@ -25,6 +35,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             className="flex flex-col border-r border-gray-200 bg-gray-50/50 min-w-0 transition-none h-full"
             style={{ width: isMobile ? '100%' : `${width}%` }}
         >
+            {/* 1. Header: Toolbar showing 'Live Preview' status. */}
             <div className="h-10 border-b border-gray-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-10">
                 <span className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
                     <FileText size={14} /> Giao diện Đề thi
@@ -33,15 +44,21 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                     Live Preview
                 </span>
             </div>
+
+            {/* 2. Content Area: The scrollable region containing the virtual paper. */}
             <div className={`flex-1 overflow-y-auto ${isMobile ? 'p-3' : 'p-8'} custom-scrollbar relative`}>
+                {/* 2a. Overlay: Show a spinner while the document is being parsed/serialized. */}
                 {isLoading && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-20 backdrop-blur-sm">
                         <Loader2 className="animate-spin text-indigo-600 mb-3" size={32} />
                         <p className="text-gray-600 font-medium animate-pulse">Đang phân tích cấu trúc...</p>
                     </div>
                 )}
+
+                {/* 2b. The Paper: Styled to look like a physical A4 document. */}
                 {previewData && (
                     <div className={`${isMobile ? 'w-full' : 'max-w-[21cm]'} mx-auto bg-white ${isMobile ? 'min-h-0' : 'min-h-[29.7cm]'} shadow-lg border border-gray-200 ${isMobile ? 'p-4' : 'p-10'} transition-all origin-top animate-fade-in-up preview-paper`}>
+                        {/* 3. The Core Document Renderer. */}
                         <PreviewRenderer
                             rawText={previewData.raw_text}
                             assetsMap={previewData.assets_map}

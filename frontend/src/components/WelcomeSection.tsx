@@ -1,6 +1,13 @@
 import React from 'react';
 import { Upload } from 'lucide-react';
 
+/**
+ * WELCOME SECTION COMPONENT
+ * 
+ * The landing page of the application. 
+ * Provides a clear 'Call to Action' for the user to upload their first DOCX file.
+ */
+
 interface WelcomeSectionProps {
     onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
@@ -8,14 +15,14 @@ interface WelcomeSectionProps {
 const WelcomeSection: React.FC<WelcomeSectionProps> = ({ onFileChange }) => {
     return (
         <div className="welcome-wrapper fade-in">
-            {/* Main Card - Responsive sizing */}
+            {/* 1. MAIN CARD: Responsive container for the welcome content. */}
             <div
                 className="bg-white rounded-3xl shadow-2xl animate-scale-up overflow-hidden"
                 style={{
                     width: 'min(90vw, 600px)',
                 }}
             >
-                {/* Logo Header inside card */}
+                {/* 2. GRADIENT HEADER: Branding and system title. */}
                 <div
                     className="bg-gradient-to-r from-indigo-600 to-purple-600 flex flex-col items-center"
                     style={{ padding: 'clamp(16px, 2vw, 28px) clamp(20px, 3vw, 32px)' }}
@@ -34,12 +41,13 @@ const WelcomeSection: React.FC<WelcomeSectionProps> = ({ onFileChange }) => {
                     </p>
                 </div>
 
-                {/* Upload Zone */}
+                {/* 3. UPLOAD ZONE: The primary interaction point. */}
                 <div style={{ padding: 'clamp(20px, 2.5vw, 32px)' }}>
                     <div
                         className="upload-zone border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center relative group hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer"
                         style={{ padding: 'clamp(28px, 3vw, 48px) clamp(16px, 2vw, 24px)' }}
                     >
+                        {/* Hidden input overlaying the entire zone to capture clicks/drags. */}
                         <input
                             type="file"
                             accept=".docx"
@@ -47,6 +55,7 @@ const WelcomeSection: React.FC<WelcomeSectionProps> = ({ onFileChange }) => {
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                         />
 
+                        {/* Visual feedback: Upload Icon. */}
                         <div
                             className="bg-gray-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300 border border-gray-100"
                             style={{ width: 'clamp(48px, 4vw, 64px)', height: 'clamp(48px, 4vw, 64px)' }}
@@ -70,6 +79,7 @@ const WelcomeSection: React.FC<WelcomeSectionProps> = ({ onFileChange }) => {
                             hoặc
                         </p>
 
+                        {/* Visual Button: Purely cosmetic as the <input> handles the actual click. */}
                         <button
                             className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium shadow-md hover:from-indigo-700 hover:to-purple-700 transition-all"
                             style={{
@@ -88,7 +98,7 @@ const WelcomeSection: React.FC<WelcomeSectionProps> = ({ onFileChange }) => {
                         </p>
                     </div>
 
-                    {/* Footer */}
+                    {/* 4. FOOTER: Credits and Versioning. */}
                     <p
                         className="text-center text-gray-400 mt-4"
                         style={{ fontSize: 'clamp(9px, 0.7vw, 11px)' }}
