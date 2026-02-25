@@ -200,18 +200,25 @@ def _has_rich_content(element: OxmlElement) -> bool:
 
 
 def _get_option_text(element: OxmlElement) -> str:
-    """Extract plain text from an XML element."""
+    """Extract plain text from an XML element, with normalized whitespace."""
     text = ""
     for node in element.iter():
         if node.tag.endswith('}t') and node.text:
             text += node.text
-    return text.strip()
+    # Normalize: collapse multiple spaces/tabs into single space, then strip
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 def _should_compact_options(options: List[OptionBlock]) -> str:
     """
     Decide layout for MCQ options based on content analysis.
     Returns: '4col', '2col', or 'block'
+    
+    Rules:
+    - Only 2 or 4 options per row (never 3)
+    - 4col: all options ≤ 35 chars, exactly 4 options, text-only
+    - 2col: all options ≤ 70 chars, even number of options, text-only
+    - block: anything else (rich content, long text, odd count)
     """
     if not options or len(options) < 2:
         return "block"
@@ -229,9 +236,9 @@ def _should_compact_options(options: List[OptionBlock]) -> str:
         max_text_len = max(max_text_len, len(text))
 
     # Threshold-based layout decision
-    if len(options) == 4 and max_text_len <= 20:
+    if len(options) == 4 and max_text_len <= 35:
         return "4col"
-    elif max_text_len <= 45 and len(options) % 2 == 0:
+    elif max_text_len <= 70 and len(options) % 2 == 0:
         return "2col"
     else:
         return "block"
