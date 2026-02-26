@@ -28,6 +28,7 @@ function App() {
   const [error, setError] = useState<string>('');                       // Global error message for UI display.
   const [uploadProgress, setUploadProgress] = useState<number>(0);      // Progress of file upload to S3 (0-100).
   const [showOverlay, setShowOverlay] = useState(false);                // Toggles the processing/status modal.
+  const [isSubmitting, setIsSubmitting] = useState(false);              // Protects UI against gap between upload completion and status polling hook
 
   // --- 2. Functional Hooks ---
   const isMobile = useIsMobile();
@@ -51,8 +52,7 @@ function App() {
     resetEditor,
   } = useExamEditor();
 
-  // React Query hook to trigger the backend processing job.
-  const { createJob, isLoading: isCreatingJob } = useCreateJob();
+  const { createJob } = useCreateJob();
 
   // Periodic status polling of the currentJobId.
   const { data: jobStatusData } = useJobStatus(currentJobId, {
@@ -84,7 +84,9 @@ function App() {
   const isJobComplete = jobStatus === 'Done' || jobStatus === 'Failed';
   const isWaitingForStatus = !!currentJobId && !jobStatusData;
   const isJobRunning = jobStatusData && !isJobComplete;
-  const isProcessing = isCreatingJob || isWaitingForStatus || !!isJobRunning;
+
+  // isSubmitting covers the ENTIRE job submission flow including the gap before polling starts
+  const isProcessing = isSubmitting || isWaitingForStatus || !!isJobRunning;
 
   // --- 4. Event Handlers ---
 
@@ -139,6 +141,8 @@ function App() {
    */
   const handleSubmit = async () => {
     if (!selectedFile) return;
+    setIsSubmitting(true);
+    setCurrentJobId(null); // Fix flash bug: Clear the previous job result so 'Done' screen goes away immediately
     setShowOverlay(true);
     setUploadProgress(0);
     setError('');
@@ -149,7 +153,9 @@ function App() {
         setUploadProgress(progress.percentage);
       }, rawText, examCodes || undefined);
       setCurrentJobId(jobId);
+      setIsSubmitting(false);
     } catch (err) {
+      setIsSubmitting(false);
       setError('Lỗi: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
