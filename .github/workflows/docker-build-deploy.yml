@@ -127,7 +127,7 @@ jobs:
             sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/exam-backend:latest
 
             # Khởi động lại service bằng image mới mà không làm rớt mạng (no-deps recreation)
-            sudo docker compose -f docker-compose.prod.yml --env-file backend/.env up -d --no-deps --build exam-backend exam-worker
+            sudo docker compose -f docker-compose.prod.yml --env-file backend/.env up -d --no-deps --build backend worker
 
             # Dọn dẹp cache rác trên EC2
             sudo docker image prune -f
