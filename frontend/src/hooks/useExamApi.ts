@@ -103,17 +103,34 @@ export const useJobStatus = (jobId: string | null, options?: { enabled?: boolean
             }
         });
 
+        let pollInterval: ReturnType<typeof setInterval>;
+
         // Handle error events from server
         eventSource.addEventListener('error', () => {
-            console.warn('[SSE] Connection error, falling back to GET request');
+            console.warn('[SSE] Connection error, falling back to polling');
             eventSource.close();
             eventSourceRef.current = null;
 
-            // Fallback: single GET request
-            api.getJobStatus(jobId).then(setData).catch(console.error);
+            // Fallback: Start polling instead of single GET
+            pollInterval = setInterval(async () => {
+                try {
+                    const parsed = await api.getJobStatus(jobId);
+                    setData(parsed);
+                    if (parsed.Status === 'Done' || parsed.Status === 'Failed') {
+                        clearInterval(pollInterval);
+                    }
+                } catch (err) {
+                    console.error('[Polling Fallback] Error:', err);
+                }
+            }, 3000);
         });
 
-        return cleanup;
+        return () => {
+            cleanup();
+            if (pollInterval) {
+                clearInterval(pollInterval);
+            }
+        };
     }, [jobId, enabled, cleanup]);
 
     // Reset data when jobId changes

@@ -230,7 +230,12 @@ async def stream_job_status(job_id: str):
             # Server-side poll interval (2 seconds)
             await asyncio.sleep(2)
 
-    return EventSourceResponse(event_generator())
+    headers = {
+        "X-Accel-Buffering": "no",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive"
+    }
+    return EventSourceResponse(event_generator(), headers=headers)
 
 
 # 5.4 Endpoint: Instant Preview
