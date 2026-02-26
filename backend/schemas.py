@@ -55,6 +55,7 @@ class JobStatusResponse(BaseModel):
 
     JobId: str
     Status: str
+    JobProgress: Optional[int] = 0
     OutputUrl: Optional[str] = None  # Presigned URL to the resulting ZIP.
     CreatedAt: int
     UpdatedAt: int

@@ -55,7 +55,7 @@ def process_exam_batch(
     job_id: str,
     num_variants: int,
     output_zip_path: str,
-    progress_callback: Optional[Callable[[], None]] = None,
+    progress_callback: Optional[Callable[[int], None]] = None,
     external_answer_map: Optional[dict] = None,
     exam_codes_str: Optional[str] = None,
 ) -> None:
@@ -74,8 +74,6 @@ def process_exam_batch(
     structure = parse_exam_template(source_bytes, doc)
 
     all_answers_data = {}
-    last_heartbeat_time = time.time()
-    HEARTBEAT_INTERVAL = 30  # Seconds (should be less than SQS VisibilityTimeout)
 
     # Step 2: Parse custom exam codes (e.g., "101,102,103" or "201" for a sequence).
     custom_codes = []
@@ -132,6 +130,10 @@ def process_exam_batch(
                     del docx_bytes
 
                     completed += 1
+                    
+                    if progress_callback:
+                        progress_pct = int((completed / num_variants) * 100)
+                        progress_callback(progress_pct)
 
                     # Periodic logging of progress.
                     if completed % 10 == 0:

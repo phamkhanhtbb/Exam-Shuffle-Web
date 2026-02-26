@@ -33,6 +33,7 @@ export interface SubmitJobResponse {
 export interface JobStatusResponse {
     JobId: string;
     Status: 'PendingUpload' | 'Queued' | 'Processing' | 'Done' | 'Failed';
+    JobProgress?: number;
     OutputUrl: string | null;
     CreatedAt: number;
     UpdatedAt: number;

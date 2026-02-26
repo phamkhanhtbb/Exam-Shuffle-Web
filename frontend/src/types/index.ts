@@ -22,6 +22,7 @@ export interface UploadJob {
   fileKey: string;      // S3 Key for the original DOCX file
   fileName: string;
   status: JobStatus;
+  jobProgress?: number;
   createdAt: number;
   updatedAt?: number;
   outputUrl?: string;   // S3 Presigned URL for the resulting ZIP

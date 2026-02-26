@@ -50,6 +50,7 @@ export interface SubmitJobResponse {
 export interface JobStatusResponse {
     JobId: string;
     Status: 'Queued' | 'Processing' | 'Done' | 'Failed';
+    JobProgress?: number;
     OutputUrl?: string;
     CreatedAt: number;
     UpdatedAt: number;

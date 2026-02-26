@@ -67,6 +67,7 @@ function App() {
     fileKey: '',
     fileName: selectedFile?.name || '',
     status: jobStatusData.Status as 'Queued' | 'Processing' | 'Done' | 'Failed',
+    jobProgress: jobStatusData.JobProgress,
     outputUrl: jobStatusData.OutputUrl || '',
     createdAt: jobStatusData.CreatedAt,
     numVariants,

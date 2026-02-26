@@ -187,6 +187,7 @@ async def get_status(job_id: str):
 async def stream_job_status(job_id: str):
     async def event_generator():
         last_status = None
+        last_progress = None
         poll_interval = 0.5  # Bắt đầu quét nhanh để phản hồi ngay nếu job xong sớm
         while True:
             try:
@@ -199,22 +200,25 @@ async def stream_job_status(job_id: str):
                     return
 
                 current_status = item.get("Status")
+                current_progress = aws.decimal_convert(item.get("JobProgress", 0))
                 data = {
                     "JobId": item.get("JobId"),
                     "Status": current_status,
+                    "JobProgress": current_progress,
                     "OutputUrl": item.get("OutputUrl"),
                     "CreatedAt": aws.decimal_convert(item.get("CreatedAt", 0)),
                     "UpdatedAt": aws.decimal_convert(item.get("UpdatedAt", 0)),
                     "LastError": item.get("LastError"),
                 }
 
-                # Only send event when status actually changes, or on first poll
-                if current_status != last_status:
+                # Only send event when status or progress actually changes, or on first poll
+                if current_status != last_status or current_progress != last_progress:
                     yield {
                         "event": "status",
                         "data": json.dumps(data),
                     }
                     last_status = current_status
+                    last_progress = current_progress
                     poll_interval = 0.5  # Reset về 0.5s khi có thay đổi trạng thái
                 else:
                     # Giãn dần thời gian chờ nếu Queue quá lâu (tránh quá tải DB)

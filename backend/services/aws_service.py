@@ -72,7 +72,7 @@ class AwsService:
         )
 
     def update_job_status(
-        self, job_id: str, status: str, num_variants: int | None = None
+        self, job_id: str, status: str, num_variants: int | None = None, progress: int | None = None
     ) -> None:
         """Update job status in DynamoDB."""
         timestamp = int(time.time())
@@ -83,6 +83,10 @@ class AwsService:
         if num_variants is not None:
             update_expr += ", NumVariants = :num"
             attr_values[":num"] = num_variants
+            
+        if progress is not None:
+            update_expr += ", JobProgress = :prog"
+            attr_values[":prog"] = progress
 
         self.table.update_item(
             Key={"JobId": job_id},

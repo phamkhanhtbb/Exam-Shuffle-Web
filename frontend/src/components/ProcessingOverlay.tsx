@@ -51,7 +51,9 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
                 return 55;
             }
             if (jobStatus === 'Processing') {
-                return 75;
+                const workerProg = currentJob?.jobProgress || 0;
+                // Ánh xạ 0-100% của Worker thành 60-99% của thanh UI
+                return 60 + Math.floor((workerProg / 100) * 39);
             }
             return 50;
         }
@@ -74,7 +76,8 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
             return 'Đang chờ xử lý...';
         }
         if (jobStatus === 'Processing') {
-            return `Đang trộn câu hỏi và tạo ${numVariants} mã đề...`;
+            const workerProg = currentJob?.jobProgress || 0;
+            return `Đang tạo ${numVariants} mã đề (${workerProg}%)...`;
         }
         if (uploadProgress >= 100 && isProcessing) {
             return 'Đang khởi tạo...';

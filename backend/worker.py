@@ -105,7 +105,7 @@ def _mark_processing(job_id: str) -> bool:
     try:
         table.update_item(
             Key={"JobId": job_id},
-            UpdateExpression="SET #s = :processing, WorkerId = :wid, UpdatedAt = :ts",
+            UpdateExpression="SET #s = :processing, WorkerId = :wid, UpdatedAt = :ts, JobProgress = :prog",
             ConditionExpression="attribute_not_exists(#s) OR #s IN (:queued, :failed)",
             ExpressionAttributeNames={"#s": "Status"},
             ExpressionAttributeValues={
@@ -114,6 +114,7 @@ def _mark_processing(job_id: str) -> bool:
                 ":failed": "Failed",
                 ":wid": WORKER_ID,
                 ":ts": int(time.time()),
+                ":prog": 0,
             },
         )
         return True
@@ -273,13 +274,22 @@ def process_message() -> None:
             return
 
         # Step 4: Define a heartbeat callback to keep the SQS message alive during long tasks.
-        def heartbeat_callback():
+        last_hb_time = [time.time()]
+        from services.aws_service import aws
+
+        def heartbeat_callback(progress_pct: int = 0):
             try:
-                sqs.change_message_visibility(
-                    QueueUrl=SETTINGS.queue_url,
-                    ReceiptHandle=receipt_handle,
-                    VisibilityTimeout=SETTINGS.visibility_timeout,
-                )
+                now = time.time()
+                # Cập nhật DynamoDB tiến độ thay vì chỉ kéo dài heartbeat
+                # Gọi AWS/DB max ~1.5s/lần để tránh bị block quá tải (Throttled)
+                if progress_pct == 100 or now - last_hb_time[0] >= 1.5:
+                    aws.update_job_status(job_id, "Processing", num_variants=num_variants, progress=progress_pct)
+                    sqs.change_message_visibility(
+                        QueueUrl=SETTINGS.queue_url,
+                        ReceiptHandle=receipt_handle,
+                        VisibilityTimeout=SETTINGS.visibility_timeout,
+                    )
+                    last_hb_time[0] = now
             except Exception as hb_err:
                 logger.warning(f"In-process heartbeat failed: {hb_err}")
 
