@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: production-deployment
-  cancel-in-progress: true # Tự động hủy job cũ nếu có code mới được push lên liên tục
+  cancel-in-progress: false # KHÔNG tự động hủy job cũ để tránh kẹt logic deploy
 
 jobs:
   # ============================================
