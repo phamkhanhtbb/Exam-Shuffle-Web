@@ -1,8 +1,9 @@
 """
 ExamShuffling API — Thin Controller Layer.
-This file handles the API endpoints, middleware setup, and delegates 
+This file handles the API endpoints, middleware setup, and delegates
 complex tasks to dedicated service modules.
 """
+
 import asyncio
 import json
 import logging
@@ -14,9 +15,12 @@ from sse_starlette.sse import EventSourceResponse
 
 from exceptions import ExamError
 from schemas import (
-    UploadUrlRequest, UploadUrlResponse,
-    SubmitJobRequest, SubmitJobResponse,
-    JobStatusResponse, PreviewResponse,
+    UploadUrlRequest,
+    UploadUrlResponse,
+    SubmitJobRequest,
+    SubmitJobResponse,
+    JobStatusResponse,
+    PreviewResponse,
 )
 from services.aws_service import aws
 from services.answer_parser import parse_answer_map_from_text
@@ -24,7 +28,7 @@ from services.preview_service import process_preview
 from routers import debug_router
 
 # -- 1. Logging Setup --
-# We configure logging to track events, errors, and information about 
+# We configure logging to track events, errors, and information about
 # incoming requests and system performance.
 logging.basicConfig(
     level=logging.INFO,
@@ -37,46 +41,49 @@ logger = logging.getLogger("server")
 app = FastAPI(
     title="ExamShuffling API",
     description="API for exam shuffling and processing",
-    version="2.0.1"
+    version="2.0.1",
 )
 
 # Include debug roots for troubleshooting purposes.
 app.include_router(debug_router.router)
 
 # -- 3. Monitoring (Metrics) --
-# Expose a /metrics endpoint for Prometheus to monitor application health 
+# Expose a /metrics endpoint for Prometheus to monitor application health
 # and performance metrics.
-from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import Instrumentator  # noqa: E402
+
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 # -- 4. CORS Middleware Configuration --
 # Define which origins (websites) are allowed to make requests to this API.
 # This prevents unauthorized cross-origin requests.
 origins = [
-    "http://localhost:3000",        # Local development (React)
-    "http://localhost:3001",        # Local development (Next.js landing)
-    "http://localhost",              # Local server
-    "https://trondeonline.me",       # Production domain
-    "https://app.trondeonline.me",   # Production SPA (subdomain)
-    "https://www.trondeonline.me",   # Production domain (www)
-    "https://exam-shuffle-web.vercel.app", # Vercel preview deployment
+    "http://localhost:3000",  # Local development (React)
+    "http://localhost:3001",  # Local development (Next.js landing)
+    "http://localhost",  # Local server
+    "https://trondeonline.me",  # Production domain
+    "https://app.trondeonline.me",  # Production SPA (subdomain)
+    "https://www.trondeonline.me",  # Production domain (www)
+    "https://exam-shuffle-web.vercel.app",  # Vercel preview deployment
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],           # Allow all HTTP methods (GET, POST, etc.)
-    allow_headers=["*"],           # Allow all headers
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
 )
 
 # -- 5. API Endpoints --
+
 
 # 5.0 Endpoint: Health Check
 # Lightweight endpoint for Docker healthcheck and load balancer probes.
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
 
 # 5.1 Endpoint: Get S3 Presigned Upload URL
 # Step 1: User requests a link to upload their DOCX file directly to S3.
@@ -104,6 +111,7 @@ async def get_upload_url(request: UploadUrlRequest):
         logger.error(f"Error generating Upload URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # 5.2 Endpoint: Submit Job for Processing
 # Step 1: After uploading to S3, the user calls this API to start the processing.
 # Step 2: If a raw text version of the answer key is provided, the server attempts to parse it.
@@ -129,14 +137,16 @@ async def submit_job(request: SubmitJobRequest):
         aws.update_job_status(request.jobId, "Queued", num_variants=request.numVariants)
 
         # Send processing instructions to SQS.
-        aws.send_job_message({
-            "jobId": request.jobId,
-            "fileKey": request.fileKey,
-            "numVariants": request.numVariants,
-            "status": "Queued",
-            "answerMap": answer_map,
-            "examCodes": request.examCodes,
-        })
+        aws.send_job_message(
+            {
+                "jobId": request.jobId,
+                "fileKey": request.fileKey,
+                "numVariants": request.numVariants,
+                "status": "Queued",
+                "answerMap": answer_map,
+                "examCodes": request.examCodes,
+            }
+        )
 
         return SubmitJobResponse(
             message="Job submitted successfully",
@@ -145,6 +155,7 @@ async def submit_job(request: SubmitJobRequest):
     except Exception as e:
         logger.error(f"Error submitting job: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # 5.3 Endpoint: Poll Job Status (kept for backward compatibility)
 # Step 1: Frontend repeatedly calls this to check if the job is finished.
@@ -157,16 +168,17 @@ async def get_status(job_id: str):
             raise HTTPException(status_code=404, detail="Job not found")
 
         return JobStatusResponse(
-            JobId=item.get('JobId'),
-            Status=item.get('Status'),
-            OutputUrl=item.get('OutputUrl'),
-            CreatedAt=aws.decimal_convert(item.get('CreatedAt', 0)),
-            UpdatedAt=aws.decimal_convert(item.get('UpdatedAt', 0)),
+            JobId=item.get("JobId"),
+            Status=item.get("Status"),
+            OutputUrl=item.get("OutputUrl"),
+            CreatedAt=aws.decimal_convert(item.get("CreatedAt", 0)),
+            UpdatedAt=aws.decimal_convert(item.get("UpdatedAt", 0)),
         )
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # 5.3b Endpoint: SSE Job Status Stream
 # Server-Sent Events endpoint that pushes status updates to the client.
@@ -185,14 +197,14 @@ async def stream_job_status(job_id: str):
                     }
                     return
 
-                current_status = item.get('Status')
+                current_status = item.get("Status")
                 data = {
-                    "JobId": item.get('JobId'),
+                    "JobId": item.get("JobId"),
                     "Status": current_status,
-                    "OutputUrl": item.get('OutputUrl'),
-                    "CreatedAt": aws.decimal_convert(item.get('CreatedAt', 0)),
-                    "UpdatedAt": aws.decimal_convert(item.get('UpdatedAt', 0)),
-                    "LastError": item.get('LastError'),
+                    "OutputUrl": item.get("OutputUrl"),
+                    "CreatedAt": aws.decimal_convert(item.get("CreatedAt", 0)),
+                    "UpdatedAt": aws.decimal_convert(item.get("UpdatedAt", 0)),
+                    "LastError": item.get("LastError"),
                 }
 
                 # Only send event when status actually changes, or on first poll
@@ -219,6 +231,7 @@ async def stream_job_status(job_id: str):
             await asyncio.sleep(2)
 
     return EventSourceResponse(event_generator())
+
 
 # 5.4 Endpoint: Instant Preview
 # Step 1: User uploads a DOCX for immediate parsing and preview (synchronous).
@@ -247,22 +260,31 @@ async def preview_exam(file: UploadFile = File(...)):
         # Unexpected errors (corrupt files, etc.).
         logger.error(f"Preview Error: {str(e)}", exc_info=True)
         if "BadZipFile" in str(type(e).__name__):
-            raise HTTPException(status_code=400, detail="DOCX file is corrupted (Bad Zip). Please try another file.")
+            raise HTTPException(
+                status_code=400,
+                detail="DOCX file is corrupted (Bad Zip). Please try another file.",
+            )
         if "PackageNotFoundError" in str(type(e).__name__):
-            raise HTTPException(status_code=400, detail="File is not a valid DOCX format.")
-        raise HTTPException(status_code=500, detail=f"System error while processing file: {str(e)}")
+            raise HTTPException(
+                status_code=400, detail="File is not a valid DOCX format."
+            )
+        raise HTTPException(
+            status_code=500, detail=f"System error while processing file: {str(e)}"
+        )
+
 
 # -- 6. Exception Handlers --
 # Global handler for ExamError to return uniform error objects to the frontend.
 @app.exception_handler(ExamError)
 async def exam_error_handler(request, exc: ExamError):  # type: ignore
     return JSONResponse(
-        status_code=400,
-        content={"detail": exc.message, "code": exc.code}
+        status_code=400, content={"detail": exc.message, "code": exc.code}
     )
+
 
 # -- 7. Server Entry Point --
 # Starts the server using Uvicorn on port 5000.
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=5000)

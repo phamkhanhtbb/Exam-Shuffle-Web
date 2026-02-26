@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from docx.oxml import OxmlElement
 
+
 # --- DATA STRUCTURES ---
 @dataclass
 class OptionBlock:

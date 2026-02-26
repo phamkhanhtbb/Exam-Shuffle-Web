@@ -7,35 +7,49 @@ from docx.oxml import OxmlElement
 
 # Import internal modules
 from .constants import (
-    SECTION_PATTERN, QUESTION_PATTERN, OPTION_START_PATTERN,
-    INLINE_OPTION_PATTERN, SUB_OPTION_PATTERN, INLINE_SUB_OPTION_PATTERN, END_NOTE_PATTERN, ANSWER_HEADER_PATTERN
+    SECTION_PATTERN,
+    QUESTION_PATTERN,
+    OPTION_START_PATTERN,
+    INLINE_OPTION_PATTERN,
+    SUB_OPTION_PATTERN,
+    INLINE_SUB_OPTION_PATTERN,
+    END_NOTE_PATTERN,
+    ANSWER_HEADER_PATTERN,
 )
 from .models import OptionBlock, QuestionBlock, Section, ExamStructure
 from .utils import (
-    _iter_block_items, _get_text, _build_paragraph_mask, _slice_paragraph_runs, OBJ_CHAR
+    _iter_block_items,
+    _get_text,
+    _build_paragraph_mask,
+    _slice_paragraph_runs,
+    OBJ_CHAR,
 )
-from exceptions import AnswerKeyNotFoundError, EmptyQuestionError
+from exceptions import EmptyQuestionError
 
 # Note: _split_inline_options_smart logic was partly in utils and partly inline in original file.
 # I will implement _split_inline_options_smart fully here or rely on utils.
 # In utils above, I created _build_paragraph_mask. I need _split_inline_options_smart in utils or here.
 # Let's check utils again... I didn't put _split_inline_options_smart in utils content.
-# Only _build_paragraph_mask. 
+# Only _build_paragraph_mask.
 # So I should implement _split_inline_options_smart here using _build_paragraph_mask from utils.
+
 
 def _generate_content_hash(text: str) -> str:
     """Generate a short hash from question content for matching."""
     # Normalize: lowercase, collapse whitespace, take first 200 chars
-    clean = re.sub(r'\s+', ' ', text).strip().lower()[:200]
-    return hashlib.md5(clean.encode('utf-8')).hexdigest()[:12]
+    clean = re.sub(r"\s+", " ", text).strip().lower()[:200]
+    return hashlib.md5(clean.encode("utf-8")).hexdigest()[:12]
 
 
-def _split_inline_options_smart(paragraph, pattern=INLINE_OPTION_PATTERN) -> Tuple[Optional[OxmlElement], List[dict]]:
+def _split_inline_options_smart(
+    paragraph, pattern=INLINE_OPTION_PATTERN
+) -> Tuple[Optional[OxmlElement], List[dict]]:
     full_text, mask = _build_paragraph_mask(paragraph)
     matches = list(pattern.finditer(full_text))
-    
-    if not matches: return None, []
-    
+
+    if not matches:
+        return None, []
+
     pre_element = None
     # Check for content BEFORE the first option
     first_start = matches[0].start()
@@ -44,43 +58,45 @@ def _split_inline_options_smart(paragraph, pattern=INLINE_OPTION_PATTERN) -> Tup
         # Even if it's whitespace, usually we might want to keep it or ignore it.
         # But if it contains text (like "d. ..."), we MUST keep it.
         if full_text[:first_start].strip():
-             pre_element = _slice_paragraph_runs(paragraph, 0, first_start)
+            pre_element = _slice_paragraph_runs(paragraph, 0, first_start)
 
     results = []
-    
+
     for i, match in enumerate(matches):
         # Group 1: Asterisk before, Group 2: Letter, Group 3: Asterisk after
         asterisk_before = match.group(1)
         label = match.group(2).upper()
         asterisk_after = match.group(3) if match.lastindex >= 3 else ""
-        
+
         # Start index of the whole match
         start_idx = match.start()
         # End index is start of next match or end of text
         end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
-        
+
         rich_element = _slice_paragraph_runs(paragraph, start_idx, end_idx)
-        
+
         # Determine strict label char location for masking check (red underline)
         # match.start(2) is the index of the Letter
         label_char_idx = match.start(2)
-        
+
         is_marked = False
         # Check 1: Explicit asterisk (before OR after)
-        if asterisk_before == '*' or asterisk_after == '*':
+        if asterisk_before == "*" or asterisk_after == "*":
             is_marked = True
         # Check 2: Red/Underline mask
         elif label_char_idx < len(mask) and mask[label_char_idx]:
             is_marked = True
         elif any(mask[start_idx:end_idx]):
             is_marked = True
-            
-        results.append({"label": label, "element": rich_element, "is_marked": is_marked})
-    
+
+        results.append(
+            {"label": label, "element": rich_element, "is_marked": is_marked}
+        )
+
     return pre_element, results
 
+
 # Fix import in utils: _slice_paragraph_runs is in utils.
-from .utils import _slice_paragraph_runs
 
 
 def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, str]:
@@ -97,10 +113,8 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
     # Capture Group 1: Question Num, Group 2: Answer Letter
     text_ans_pat = re.compile(r"(?:Câu|Bài)?\s*(\d+)[\.:\s-]*([A-D])\b", re.IGNORECASE)
 
-
-
     for kind, block in blocks:
-        if kind == 'tbl':
+        if kind == "tbl":
             table = block
             # Chiến thuật 1: Hàng ngang (Matrix)
             rows = table.rows
@@ -111,8 +125,8 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                 temp_row_map = {}
                 min_cells = min(len(row_q.cells), len(row_a.cells))
                 # Track numbering restarts within a single table row
-                prev_raw_q = 0       # Previous raw question number (before offset)
-                offset_within = 0    # Accumulated offset from restarts
+                prev_raw_q = 0  # Previous raw question number (before offset)
+                offset_within = 0  # Accumulated offset from restarts
                 for c in range(min_cells):
                     txt_q = row_q.cells[c].text.strip()
                     txt_a = row_a.cells[c].text.strip()
@@ -132,7 +146,7 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                             else:
                                 # TF format: store as-is but remove spaces (e.g., "Đ D S S" -> "ĐDSS")
                                 raw_tf = a_match_tf.group(1).upper()
-                                temp_row_map[actual_q] = re.sub(r'\s+', '', raw_tf)
+                                temp_row_map[actual_q] = re.sub(r"\s+", "", raw_tf)
                             valid_pairs += 1
                         except Exception:
                             pass
@@ -157,7 +171,9 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                         overlap = set(answers_map.keys()) & set(temp_row_map.keys())
                         if overlap:
                             offset = max(answers_map.keys())
-                            temp_row_map = {k + offset: v for k, v in temp_row_map.items()}
+                            temp_row_map = {
+                                k + offset: v for k, v in temp_row_map.items()
+                            }
                     answers_map.update(temp_row_map)
                     continue
 
@@ -177,7 +193,7 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                                 answers_map[q_num] = a_match_mcq.group(1).upper()
                             else:
                                 raw_tf = a_match_tf.group(1).upper()
-                                answers_map[q_num] = re.sub(r'\s+', '', raw_tf)
+                                answers_map[q_num] = re.sub(r"\s+", "", raw_tf)
                         idx += 2
                     except Exception:
                         idx += 1
@@ -186,7 +202,7 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                     # Skip only if nxt looks like a small question number (1-2 digits)
                     # to avoid pairing consecutive question numbers
                     nxt_stripped = nxt.strip()
-                    is_small_qnum = bool(re.match(r'^\d{1,2}$', nxt_stripped))
+                    is_small_qnum = bool(re.match(r"^\d{1,2}$", nxt_stripped))
                     if not is_small_qnum:
                         try:
                             q_num = int(q_match.group(1))
@@ -199,15 +215,15 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                         idx += 1
                 else:
                     idx += 1
-        
-        elif kind == 'p':
+
+        elif kind == "p":
             # Chiến thuật 3: Text base (Paragraph)
             # Scan for all matches in the paragraph text
             text = _get_text(block).strip()
             matches = text_ans_pat.findall(text)
             if matches:
-                 # logger.debug(f"Found matches in text: {matches[:5]}...")
-                 for q_str, a_str in matches:
+                # logger.debug(f"Found matches in text: {matches[:5]}...")
+                for q_str, a_str in matches:
                     try:
                         q_num = int(q_str)
                         # Avoid overwriting if already found? Or Overwrite?
@@ -215,11 +231,10 @@ def _extract_answers_from_blocks(blocks: List[Tuple[str, object]]) -> Dict[int, 
                         answers_map[q_num] = a_str.upper()
                     except Exception:
                         pass
-    
-    
+
     if answers_map:
         # Use repr to safely print Vietnamese chars
-        safe_answers = {k: repr(v) for k, v in sorted(answers_map.items())[:25]}
+        pass
 
     return answers_map
 
@@ -228,43 +243,44 @@ def _parse_mcq_options(chunk_elements: List[Tuple[str, object]]) -> List[OptionB
     """Parse multiple choice options (A. B. C. D.)"""
     options = []
     opt_indices = []
-    
+
     # 1. First pass: Find lines starting with A., B., etc.
     for idx, (kind, block) in enumerate(chunk_elements):
-         if kind == "p":
-             text = _get_text(block).strip()
-             match = OPTION_START_PATTERN.match(text)
-             # DEBUG LOG
-             # try:
-             #    if "A." in text or "C." in text:
-             #        print(f"[DEBUG] Check Option Line: {repr(text)} -> Match: {bool(match)}")
-             # except: pass
-             
-             if match:
-                 # Group 1: *, Group 2: Letter
-                 asterisk = match.group(1)
-                 letter = match.group(2).upper()
-                 
-                 # --- FIX: INLINE OPTION DETECTION ---
-                 # If this line ALSO contains " B." or " C." etc., it might be an inline option line.
-                 # OPTION_START_PATTERN matches start of string.
-                 # Check if there are other matches of INLINE_OPTION_PATTERN in the REST of the text
-                 # excluding the start match.
-                 
-                 remaining_text = text[match.end():]
-                 if INLINE_OPTION_PATTERN.search(remaining_text):
-                      # Detect multiple options in this line -> Skip Block Parser
-                      # Let _fallback_inline_options handle it.
-                      continue
-                 # ------------------------------------
-                 
-                 try:
-                     # logger.debug(f"Found Vertical Option: {letter}")
-                     pass
-                 except Exception: pass
+        if kind == "p":
+            text = _get_text(block).strip()
+            match = OPTION_START_PATTERN.match(text)
+            # DEBUG LOG
+            # try:
+            #    if "A." in text or "C." in text:
+            #        print(f"[DEBUG] Check Option Line: {repr(text)} -> Match: {bool(match)}")
+            # except: pass
 
-                 opt_indices.append((idx, letter, asterisk == '*'))
-    
+            if match:
+                # Group 1: *, Group 2: Letter
+                asterisk = match.group(1)
+                letter = match.group(2).upper()
+
+                # --- FIX: INLINE OPTION DETECTION ---
+                # If this line ALSO contains " B." or " C." etc., it might be an inline option line.
+                # OPTION_START_PATTERN matches start of string.
+                # Check if there are other matches of INLINE_OPTION_PATTERN in the REST of the text
+                # excluding the start match.
+
+                remaining_text = text[match.end() :]
+                if INLINE_OPTION_PATTERN.search(remaining_text):
+                    # Detect multiple options in this line -> Skip Block Parser
+                    # Let _fallback_inline_options handle it.
+                    continue
+                # ------------------------------------
+
+                try:
+                    # logger.debug(f"Found Vertical Option: {letter}")
+                    pass
+                except Exception:
+                    pass
+
+                opt_indices.append((idx, letter, asterisk == "*"))
+
     if not opt_indices:
         return []
 
@@ -273,34 +289,35 @@ def _parse_mcq_options(chunk_elements: List[Tuple[str, object]]) -> List[OptionB
     for i, (start_idx, label, has_asterisk) in enumerate(opt_indices):
         end_idx = split_points[i + 1]
         opt_elems = [blk._element for _, blk in chunk_elements[start_idx:end_idx]]
-        
+
         # Check marking (red/underline) or asterisk
         is_marked = has_asterisk
         if not is_marked:
             for blk_idx in range(start_idx, end_idx):
                 kind, blk = chunk_elements[blk_idx]
-                if kind == 'p' and any(_build_paragraph_mask(blk)[1]):
+                if kind == "p" and any(_build_paragraph_mask(blk)[1]):
                     is_marked = True
                     break
         options.append(OptionBlock(label, opt_elems, is_marked))
-        
+
     return options
+
 
 def _parse_tf_options(chunk_elements: List[Tuple[str, object]]) -> List[OptionBlock]:
     """Parse True/False options (a) b) c) d))"""
     options = []
     opt_indices = []
-    
+
     for idx, (kind, block) in enumerate(chunk_elements):
-         if kind == "p":
-             text = _get_text(block).strip()
-             match = SUB_OPTION_PATTERN.match(text)
-             if match:
-                 # Group 1: *, Group 2: letter
-                 asterisk = match.group(1)
-                 letter = match.group(2).lower()
-                 opt_indices.append((idx, letter, asterisk == '*'))
-                 
+        if kind == "p":
+            text = _get_text(block).strip()
+            match = SUB_OPTION_PATTERN.match(text)
+            if match:
+                # Group 1: *, Group 2: letter
+                asterisk = match.group(1)
+                letter = match.group(2).lower()
+                opt_indices.append((idx, letter, asterisk == "*"))
+
     if not opt_indices:
         return []
 
@@ -308,67 +325,77 @@ def _parse_tf_options(chunk_elements: List[Tuple[str, object]]) -> List[OptionBl
     for i, (start_idx, label, has_asterisk) in enumerate(opt_indices):
         end_idx = split_points[i + 1]
         opt_elems = [blk._element for _, blk in chunk_elements[start_idx:end_idx]]
-        
+
         is_marked = has_asterisk
         # Also check for red/underline mask if needed for TF? Usually explicit text is better.
         # But let's keep consistency if user used color.
         if not is_marked:
-             for blk_idx in range(start_idx, end_idx):
+            for blk_idx in range(start_idx, end_idx):
                 kind, blk = chunk_elements[blk_idx]
-                if kind == 'p' and any(_build_paragraph_mask(blk)[1]):
+                if kind == "p" and any(_build_paragraph_mask(blk)[1]):
                     is_marked = True
                     break
-        
+
         options.append(OptionBlock(label, opt_elems, is_marked))
-        
+
     return options
 
-def _fallback_inline_options(chunk_elements: List[Tuple[str, object]], pattern=INLINE_OPTION_PATTERN) -> Tuple[List[OxmlElement], List[OptionBlock]]:
+
+def _fallback_inline_options(
+    chunk_elements: List[Tuple[str, object]], pattern=INLINE_OPTION_PATTERN
+) -> Tuple[List[OxmlElement], List[OptionBlock]]:
     """Try to find inline options (Câu 1: ... A. ... B. ...)"""
     stems = []
-    options = []
     temp_options = []
-    
+
     for kind, block in chunk_elements:
-        if kind == 'p':
+        if kind == "p":
             pre_elem, inline_ops = _split_inline_options_smart(block, pattern=pattern)
-            
+
             if pre_elem:
                 stems.append(pre_elem)
-                
+
             if inline_ops:
                 for op in inline_ops:
-                    temp_options.append(OptionBlock(op["label"], [op["element"]], op["is_marked"]))
+                    temp_options.append(
+                        OptionBlock(op["label"], [op["element"]], op["is_marked"])
+                    )
             else:
-                 # If no inline options, and no pre_elem (meaning no matches), then append whole block
-                 # But duplicate check? 
-                 # If inline_ops is empty, pre_elem is None.
-                 # So we append block._element.
-                 if not pre_elem:
-                     if not temp_options: stems.append(block._element)
-                     # If temp_options has content, and this block has NO options?
-                     # Then it's probably part of the last option? Or a new question text?
-                     # _fallback_inline_options assumes if options started, subsequent blocks belong to options?
-                     # Or stems?
-                     # Current logic: "if not temp_options: stems.append" implies that once options start, 
-                     # we don't go back to stems. 
-                     # BUT wait: if we found options in previous block, and this block has NO options.
-                     # It should probably belong to the LAST option.
-                     # But `OptionBlock` doesn't easily support multi-block inline?
-                     # Actually `OptionBlock` has `elements` list.
-                     # So if `temp_options` is not empty, we add to last option!
-                     elif temp_options:
-                         temp_options[-1].elements.append(block._element)
-                         
+                # If no inline options, and no pre_elem (meaning no matches), then append whole block
+                # But duplicate check?
+                # If inline_ops is empty, pre_elem is None.
+                # So we append block._element.
+                if not pre_elem:
+                    if not temp_options:
+                        stems.append(block._element)
+                    # If temp_options has content, and this block has NO options?
+                    # Then it's probably part of the last option? Or a new question text?
+                    # _fallback_inline_options assumes if options started, subsequent blocks belong to options?
+                    # Or stems?
+                    # Current logic: "if not temp_options: stems.append" implies that once options start,
+                    # we don't go back to stems.
+                    # BUT wait: if we found options in previous block, and this block has NO options.
+                    # It should probably belong to the LAST option.
+                    # But `OptionBlock` doesn't easily support multi-block inline?
+                    # Actually `OptionBlock` has `elements` list.
+                    # So if `temp_options` is not empty, we add to last option!
+                    elif temp_options:
+                        temp_options[-1].elements.append(block._element)
+
         else:
-            if not temp_options: stems.append(block._element)
-            elif temp_options: temp_options[-1].elements.append(block._element)
-            
+            if not temp_options:
+                stems.append(block._element)
+            elif temp_options:
+                temp_options[-1].elements.append(block._element)
+
     if temp_options:
         return stems, temp_options
     return [], []
 
-def _parse_options(chunk_elements: List[Tuple[str, object]]) -> Tuple[str, List[OxmlElement], List[OptionBlock]]:
+
+def _parse_options(
+    chunk_elements: List[Tuple[str, object]],
+) -> Tuple[str, List[OxmlElement], List[OptionBlock]]:
     """Master function to determine mode and parse options"""
     # 1. Try MCQ Block-based
     mcq_options = _parse_mcq_options(chunk_elements)
@@ -376,13 +403,13 @@ def _parse_options(chunk_elements: List[Tuple[str, object]]) -> Tuple[str, List[
         first_opt_lbl = mcq_options[0].label
         first_opt_idx = -1
         for idx, (kind, block) in enumerate(chunk_elements):
-             if kind == 'p':
-                 text = _get_text(block).strip()
-                 m = OPTION_START_PATTERN.match(text)
-                 if m and m.group(2).upper() == first_opt_lbl:
-                     first_opt_idx = idx
-                     break
-        
+            if kind == "p":
+                text = _get_text(block).strip()
+                m = OPTION_START_PATTERN.match(text)
+                if m and m.group(2).upper() == first_opt_lbl:
+                    first_opt_idx = idx
+                    break
+
         if first_opt_idx != -1:
             stems = [blk._element for _, blk in chunk_elements[:first_opt_idx]]
             return "mcq", stems, mcq_options
@@ -393,77 +420,84 @@ def _parse_options(chunk_elements: List[Tuple[str, object]]) -> Tuple[str, List[
         first_opt_lbl = tf_options[0].label
         first_opt_idx = -1
         for idx, (kind, block) in enumerate(chunk_elements):
-             if kind == 'p':
-                 text = _get_text(block).strip()
-                 m = SUB_OPTION_PATTERN.match(text)
-                 if m and m.group(2).lower() == first_opt_lbl:
-                     first_opt_idx = idx
-                     break
+            if kind == "p":
+                text = _get_text(block).strip()
+                m = SUB_OPTION_PATTERN.match(text)
+                if m and m.group(2).lower() == first_opt_lbl:
+                    first_opt_idx = idx
+                    break
         if first_opt_idx != -1:
             # --- FIX: Infer missing option a) ---
             # If first found option is 'b' (not 'a'), the content between
             # the question stem and 'b)' is likely option a) without a label.
             # Example: "Câu 3: ... [Image] Text content. b) ..."
             #   -> "Text content." should be option a).
-            if first_opt_lbl != 'a' and first_opt_idx > 1:
+            if first_opt_lbl != "a" and first_opt_idx > 1:
                 stem_elements = []
                 option_a_elements = []
-                
+
                 for idx in range(first_opt_idx):
                     kind_i, block_i = chunk_elements[idx]
-                    
+
                     # Block 0 is always stem (Câu N: ...)
                     if idx == 0:
                         stem_elements.append(block_i._element)
                         continue
-                    
+
                     # Image-only paragraphs are part of the question context (stem)
-                    if kind_i == 'p':
+                    if kind_i == "p":
                         full_text_i, _ = _build_paragraph_mask(block_i)
                         stripped = full_text_i.strip()
                         # Pure image or empty paragraph -> stem
-                        if stripped == OBJ_CHAR or stripped == '':
+                        if stripped == OBJ_CHAR or stripped == "":
                             stem_elements.append(block_i._element)
                             continue
-                    
+
                     # Tables before options -> stem
-                    if kind_i == 'tbl':
+                    if kind_i == "tbl":
                         stem_elements.append(block_i._element)
                         continue
-                    
+
                     # Text paragraphs after stem -> option a content
                     option_a_elements.append(block_i._element)
-                
+
                 if option_a_elements:
-                    synthetic_a = OptionBlock('a', option_a_elements, False)
+                    synthetic_a = OptionBlock("a", option_a_elements, False)
                     tf_options.insert(0, synthetic_a)
                     return "true_false", stem_elements, tf_options
-            
+
             stems = [blk._element for _, blk in chunk_elements[:first_opt_idx]]
             return "true_false", stems, tf_options
 
     # 3. Try Inline Fallback (MCQ - A, B, C, D)
-    stems_inline, ops_inline = _fallback_inline_options(chunk_elements, pattern=INLINE_OPTION_PATTERN)
+    stems_inline, ops_inline = _fallback_inline_options(
+        chunk_elements, pattern=INLINE_OPTION_PATTERN
+    )
     if ops_inline:
-         if len(ops_inline) >= 2:
-             return "mcq", stems_inline, ops_inline
+        if len(ops_inline) >= 2:
+            return "mcq", stems_inline, ops_inline
 
     # 3.5. Try Inline Fallback (True/False - a, b, c, d)
-    stems_inline_tf, ops_inline_tf = _fallback_inline_options(chunk_elements, pattern=INLINE_SUB_OPTION_PATTERN)
+    stems_inline_tf, ops_inline_tf = _fallback_inline_options(
+        chunk_elements, pattern=INLINE_SUB_OPTION_PATTERN
+    )
     if ops_inline_tf:
-         if len(ops_inline_tf) >= 2:
-             return "true_false", stems_inline_tf, ops_inline_tf
+        if len(ops_inline_tf) >= 2:
+            return "true_false", stems_inline_tf, ops_inline_tf
 
     # 4. Explicit Short Answer (No options but valid question)
     return "short", [blk._element for _, blk in chunk_elements], []
 
 
 def _parse_questions_in_range(blocks: List[Tuple[str, object]]) -> List[QuestionBlock]:
-    if not blocks: return []
+    if not blocks:
+        return []
     q_indices = []
     for idx, (kind, block) in enumerate(blocks):
-        if QUESTION_PATTERN.match(_get_text(block)): q_indices.append(idx)
-    if not q_indices: return []
+        if QUESTION_PATTERN.match(_get_text(block)):
+            q_indices.append(idx)
+    if not q_indices:
+        return []
     questions = []
     for i, start in enumerate(q_indices):
         next_q_start = q_indices[i + 1] if i + 1 < len(q_indices) else len(blocks)
@@ -473,40 +507,48 @@ def _parse_questions_in_range(blocks: List[Tuple[str, object]]) -> List[Question
         q_num = int(match.group(1)) if match else 0
         raw_label = match.group(0) if match else "Câu ?"
         mode, stems, opts = _parse_options(raw_chunk)
-        
+
         # --- Extract correct_answer_text for ALL modes (fallback or primary for Short Answer) ---
         ans_text = None
         # Check "Đáp án: ..." in stems
         idx_to_remove = -1
         for idx, stem in enumerate(stems):
-             txt = _get_text(stem)
-             # Basic clean tags
-             txt_clean = re.sub(r"\[![a-z]:|\]", "", txt).strip()
-             # Expanded regex to capture "Lời giải", "Hướng dẫn", "HD", etc.
-             m_ans = re.search(r"(?:Đáp án|ĐÁP ÁN|Dap an|Lời giải|Lơi giải|Loi giai|Hướng dẫn|Huong dan|HD)[:\.]?\s*(.*)", txt_clean, re.IGNORECASE)
-             if m_ans:
-                 ans_text = m_ans.group(1).strip()
-                 # Mark for removal if it's the only thing in the paragraph (or mostly)
-                 # Determining if we should remove the whole paragraph:
-                 # If the match covers most of the text?
-                 # Simplifying: If it starts with the pattern, remove the whole paragraph for safety?
-                 # Or just strip? Removing element is safer for Docx structure than modifying text inplace often.
-                 if len(txt.strip()) < len(m_ans.group(0)) + 20: # Heuristic: Short line containing answer
-                     idx_to_remove = idx
-                 break
-        
-        if idx_to_remove != -1:
-             stems.pop(idx_to_remove)
+            txt = _get_text(stem)
+            # Basic clean tags
+            txt_clean = re.sub(r"\[![a-z]:|\]", "", txt).strip()
+            # Expanded regex to capture "Lời giải", "Hướng dẫn", "HD", etc.
+            m_ans = re.search(
+                r"(?:Đáp án|ĐÁP ÁN|Dap an|Lời giải|Lơi giải|Loi giai|Hướng dẫn|Huong dan|HD)[:\.]?\s*(.*)",
+                txt_clean,
+                re.IGNORECASE,
+            )
+            if m_ans:
+                ans_text = m_ans.group(1).strip()
+                # Mark for removal if it's the only thing in the paragraph (or mostly)
+                # Determining if we should remove the whole paragraph:
+                # If the match covers most of the text?
+                # Simplifying: If it starts with the pattern, remove the whole paragraph for safety?
+                # Or just strip? Removing element is safer for Docx structure than modifying text inplace often.
+                if (
+                    len(txt.strip()) < len(m_ans.group(0)) + 20
+                ):  # Heuristic: Short line containing answer
+                    idx_to_remove = idx
+                break
 
-        questions.append(QuestionBlock(
-            original_idx=q_num,
-            raw_label=raw_label,
-            stem_elements=stems,
-            options=opts,
-            mode=mode,  # FIX: Apply the detected mode (mcq, true_false, short)
-            correct_answer_text=ans_text
-        ))
-        
+        if idx_to_remove != -1:
+            stems.pop(idx_to_remove)
+
+        questions.append(
+            QuestionBlock(
+                original_idx=q_num,
+                raw_label=raw_label,
+                stem_elements=stems,
+                options=opts,
+                mode=mode,  # FIX: Apply the detected mode (mcq, true_false, short)
+                correct_answer_text=ans_text,
+            )
+        )
+
         # --- Generate Content Hash for reliable matching ---
         stem_text_parts = []
         for el in stems:
@@ -521,40 +563,45 @@ def _parse_questions_in_range(blocks: List[Tuple[str, object]]) -> List[Question
         if not questions[-1].correct_answer_text and questions[-1].options:
             last_opt = questions[-1].options[-1]
             idx_to_remove_opt = -1
-            
+
             for idx, el in enumerate(last_opt.elements):
-                txt = _get_text(el) 
-                m_ans = re.search(r"(?:Đáp án|ĐÁP ÁN|Dap an|Lời giải|Lơi giải|Loi giai|Hướng dẫn|Huong dan|HD)[:\.]?\s*(.*)", txt, re.IGNORECASE)
+                txt = _get_text(el)
+                m_ans = re.search(
+                    r"(?:Đáp án|ĐÁP ÁN|Dap an|Lời giải|Lơi giải|Loi giai|Hướng dẫn|Huong dan|HD)[:\.]?\s*(.*)",
+                    txt,
+                    re.IGNORECASE,
+                )
                 if m_ans:
                     questions[-1].correct_answer_text = m_ans.group(1).strip()
                     # Remove this element from option
                     idx_to_remove_opt = idx
                     break
-            
+
             if idx_to_remove_opt != -1:
                 last_opt.elements.pop(idx_to_remove_opt)
-
 
         # --- FIX: Map correct_answer_text to options if not already marked ---
         # This ensures that if the user provided "Đáp án: A", we treat Option A as correct
         # so that generators.py can shuffle it correctly (instead of falling back to static "A").
         q_obj = questions[-1]
         has_marked = any(opt.is_correct for opt in q_obj.options)
-        
+
         if not has_marked and q_obj.correct_answer_text:
             # Clean text (remove special chars) to find "A", "B", "True", "False"
-            clean_ans = re.sub(r"[^a-zA-Z]", "", q_obj.correct_answer_text).strip().upper()
-            
+            clean_ans = (
+                re.sub(r"[^a-zA-Z]", "", q_obj.correct_answer_text).strip().upper()
+            )
+
             # Map for MCQ/TF
             target_lbl = clean_ans
-            
+
             for opt in q_obj.options:
                 # Compare label (A, B...) or clean label
                 opt_lbl_clean = re.sub(r"[^a-zA-Z]", "", opt.label).strip().upper()
                 if opt_lbl_clean == target_lbl:
                     opt.is_correct = True
                     break
-    
+
     return questions
 
 
@@ -572,7 +619,7 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
         text = _get_text(block).strip()
         # Debug log
         # if "ĐÁP ÁN" in text.upper(): print(f"[DEBUG] Check Header: '{text}' -> Match: {bool(ANSWER_HEADER_PATTERN.match(text))}")
-        
+
         if ANSWER_HEADER_PATTERN.match(text):
             # logger.debug(f"Found Answer Header at index {idx}")
             main_blocks = all_blocks[:idx]
@@ -600,18 +647,20 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
             # Found "HẾT". Check if next blocks are "Đáp án: ..." belonging to the previous question
             # If so, we delay the footer start.
             is_real_footer = True
-            
+
             # Peek ahead
             peek_idx = idx + 1
             while peek_idx < len(main_blocks):
                 peek_block = main_blocks[peek_idx][1]
                 peek_text = _get_text(peek_block).strip()
-                if not peek_text: 
+                if not peek_text:
                     peek_idx += 1
                     continue
-                
+
                 # Check if it looks like an answer line
-                if re.match(r"^(?:Đáp án|ĐÁP ÁN|Dap an)[:\.]", peek_text, re.IGNORECASE):
+                if re.match(
+                    r"^(?:Đáp án|ĐÁP ÁN|Dap an)[:\.]", peek_text, re.IGNORECASE
+                ):
                     # It matches! Include this block (and the HẾT block?) in content?
                     # Ideally "HẾT" should be footer, but if we include text AFTER it, "HẾT" must be in content too
                     # or we skip HẾT and add text? NO, order matters.
@@ -623,18 +672,18 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
                     continue
                 else:
                     break
-            
+
             if is_real_footer:
                 footer_start_idx = idx
                 break
             else:
-                 # "HẾT" was followed by answer, so it's NOT the start of the footer YET.
-                 # We treat "HẾT" as just content here?
-                 # If we assume "HẾT" is always valid footer, we have a dilemma.
-                 # But if we push footer_start_idx to peek_idx, then "HẾT" becomes content.
-                 # Which is fine, the parser will just treat it as text in the last question.
-                 # User can delete it or ignore it.
-                 pass
+                # "HẾT" was followed by answer, so it's NOT the start of the footer YET.
+                # We treat "HẾT" as just content here?
+                # If we assume "HẾT" is always valid footer, we have a dilemma.
+                # But if we push footer_start_idx to peek_idx, then "HẾT" becomes content.
+                # Which is fine, the parser will just treat it as text in the last question.
+                # User can delete it or ignore it.
+                pass
 
     content_blocks = main_blocks[:footer_start_idx]
     raw_footer_blocks = main_blocks[footer_start_idx:]
@@ -645,12 +694,13 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
 
     if not found_answer_header:
         # Scan footer blocks for tables that look like answer keys
-        temp_footer_answ_blocks = []
         for kind, block in raw_footer_blocks:
-            if kind == 'tbl':
+            if kind == "tbl":
                 # Thử extract từ bảng này
                 mini_map = _extract_answers_from_blocks([(kind, block)])
-                if len(mini_map) >= 1:  # Ngưỡng tin cậy: bảng có >=1 đáp án (hạ từ 5 để bắt bảng nhỏ)
+                if (
+                    len(mini_map) >= 1
+                ):  # Ngưỡng tin cậy: bảng có >=1 đáp án (hạ từ 5 để bắt bảng nhỏ)
                     footer_answers.update(mini_map)
                     # KHÔNG thêm vào clean_footer -> XÓA
                     continue
@@ -664,7 +714,8 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
     # 4. Chia Section (Phần I, Phần II...)
     section_starts = []
     for idx, (_, block) in enumerate(content_blocks):
-        if SECTION_PATTERN.match(_get_text(block)): section_starts.append(idx)
+        if SECTION_PATTERN.match(_get_text(block)):
+            section_starts.append(idx)
 
     if not section_starts:
         first_q_idx = 0
@@ -672,13 +723,21 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
             if QUESTION_PATTERN.match(_get_text(block)):
                 first_q_idx = idx
                 break
-        structure.header_elements = [blk._element for _, blk in content_blocks[:first_q_idx]]
+        structure.header_elements = [
+            blk._element for _, blk in content_blocks[:first_q_idx]
+        ]
         qs = _parse_questions_in_range(content_blocks[first_q_idx:])
         structure.sections.append(Section("", [], qs))
     else:
-        structure.header_elements = [blk._element for _, blk in content_blocks[:section_starts[0]]]
+        structure.header_elements = [
+            blk._element for _, blk in content_blocks[: section_starts[0]]
+        ]
         for i, start_idx in enumerate(section_starts):
-            end_idx = section_starts[i + 1] if i + 1 < len(section_starts) else len(content_blocks)
+            end_idx = (
+                section_starts[i + 1]
+                if i + 1 < len(section_starts)
+                else len(content_blocks)
+            )
             sec_blocks = content_blocks[start_idx:end_idx]
 
             # Lấy title chính xác
@@ -687,7 +746,8 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
 
             q_start = len(sec_blocks)
             for j, (_, blk) in enumerate(sec_blocks):
-                if j == 0: continue
+                if j == 0:
+                    continue
                 if QUESTION_PATTERN.match(_get_text(blk)):
                     q_start = j
                     break
@@ -698,41 +758,43 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
     # 5. Validate Validation
     total_questions = sum(len(sec.questions) for sec in structure.sections)
     if total_questions == 0:
-        raise EmptyQuestionError("Không tìm thấy bất kỳ câu hỏi nào (bắt đầu bằng 'Câu', 'Bài').")
+        raise EmptyQuestionError(
+            "Không tìm thấy bất kỳ câu hỏi nào (bắt đầu bằng 'Câu', 'Bài')."
+        )
 
     # 6. Merge đáp án từ bảng vào câu hỏi
     # TF format detection: 4 chars of Đ/D/S (e.g., ĐDSS, SDSD), allowing spaces
-    tf_answer_pat = re.compile(r'^\s*[ĐDS](?:\s*[ĐDS]){3}\s*$', re.IGNORECASE)
+    tf_answer_pat = re.compile(r"^\s*[ĐDS](?:\s*[ĐDS]){3}\s*$", re.IGNORECASE)
     # Mapping: a=0, b=1, c=2, d=3
-    tf_label_map = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
-    
+    tf_label_map = {"a": 0, "b": 1, "c": 2, "d": 3}
+
     if table_answers:
         # Use a global sequential counter to map questions to answer key positions
         # Answer key uses sequential numbering: 1, 2, 3... 18, 19, 20, 21...
         # Questions in Part 2 may restart at "Câu 1", "Câu 2"... but should map to 19, 20...
         global_q_idx = 0
-        
+
         for sec in structure.sections:
             for q in sec.questions:
                 global_q_idx += 1
-                
+
                 # Try to find answer by global index first, then by original_idx
                 answer_val = None
                 if global_q_idx in table_answers:
                     answer_val = table_answers[global_q_idx]
                 elif q.original_idx in table_answers:
                     answer_val = table_answers[q.original_idx]
-                
+
                 if answer_val:
                     # Check if this is TF format (4 chars of Đ/D/S)
                     if tf_answer_pat.match(answer_val):
                         # Clean spaces (e.g. "Đ D S S" -> "ĐDSS")
-                        clean_val = re.sub(r'\s+', '', answer_val)
-                        
+                        clean_val = re.sub(r"\s+", "", answer_val)
+
                         # TF Answer: Map each char to corresponding option
                         # with open("backend_debug_log.txt", "a", encoding="utf-8") as f:
                         #     f.write(f"[DEBUG] TF Q{global_q_idx} (orig={q.original_idx}): ans={repr(clean_val)} (raw={repr(answer_val)})\n")
-                        answer_val = clean_val # Use cleaned value below
+                        answer_val = clean_val  # Use cleaned value below
                         for opt in q.options:
                             lbl = opt.label.lower()
                             if lbl in tf_label_map:
@@ -740,12 +802,12 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
                                 if idx < len(answer_val):
                                     char = answer_val[idx].upper()
                                     # D or \u0110 = True, S = False
-                                    opt.is_correct = (char == '\u0110' or char == 'D')
+                                    opt.is_correct = char == "\u0110" or char == "D"
                                     # with open("backend_debug_log.txt", "a", encoding="utf-8") as f:
                                     #     f.write(f"[DEBUG]   opt {repr(opt.label)} -> idx={idx} char={repr(char)} -> correct={opt.is_correct}\n")
                     else:
                         # Check if this is a single MCQ letter (A-D)
-                        if re.match(r'^\s*[A-D]\s*$', answer_val, re.IGNORECASE):
+                        if re.match(r"^\s*[A-D]\s*$", answer_val, re.IGNORECASE):
                             # MCQ: Single letter answer
                             correct_char = answer_val.strip().upper()
                             for opt in q.options:
@@ -757,35 +819,42 @@ def parse_exam_template(source_bytes: bytes, doc=None) -> ExamStructure:
                             # Short Answer: Numeric or text value (e.g., "9,33", "6080")
                             # Store as correct_answer_text for short answer questions
                             q.correct_answer_text = answer_val
-    
+
     if not table_answers and not footer_answers:
-         # Check if any question has answers marked inline (underline/red)
-         has_inline_answers = False
-         for sec in structure.sections:
-             for q in sec.questions:
-                 for opt in q.options:
-                     if opt.is_correct:
-                         has_inline_answers = True
-                         break
-                 if has_inline_answers: break
-             if has_inline_answers: break
-         
-         if not has_inline_answers and not found_answer_header:
-             # Check for "Đáp án:" marker in stems (Short Answer)
-             has_short_answers = False
-             for sec in structure.sections:
-                 for q in sec.questions:
-                     if q.mode == 'short':
-                         for stem in q.stem_elements:
-                             txt = _get_text(stem)
-                             if "Đáp án:" in txt or "ĐÁP ÁN:" in txt.upper():
-                                 has_short_answers = True
-                                 break
-                     if has_short_answers: break
-                 if has_short_answers: break
-             
-             if not has_short_answers:
+        # Check if any question has answers marked inline (underline/red)
+        has_inline_answers = False
+        for sec in structure.sections:
+            for q in sec.questions:
+                for opt in q.options:
+                    if opt.is_correct:
+                        has_inline_answers = True
+                        break
+                if has_inline_answers:
+                    break
+            if has_inline_answers:
+                break
+
+        if not has_inline_answers and not found_answer_header:
+            # Check for "Đáp án:" marker in stems (Short Answer)
+            has_short_answers = False
+            for sec in structure.sections:
+                for q in sec.questions:
+                    if q.mode == "short":
+                        for stem in q.stem_elements:
+                            txt = _get_text(stem)
+                            if "Đáp án:" in txt or "ĐÁP ÁN:" in txt.upper():
+                                has_short_answers = True
+                                break
+                    if has_short_answers:
+                        break
+                if has_short_answers:
+                    break
+
+            if not has_short_answers:
                 import logging
-                logging.getLogger("server").warning("Không tìm thấy đáp án — người dùng sẽ tự chọn/nhập.")
+
+                logging.getLogger("server").warning(
+                    "Không tìm thấy đáp án — người dùng sẽ tự chọn/nhập."
+                )
 
     return structure

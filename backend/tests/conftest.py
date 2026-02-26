@@ -1,6 +1,7 @@
 """
 Pytest configuration and shared fixtures for the ExamShuffling backend tests.
 """
+
 import os
 import pytest
 
@@ -11,7 +12,10 @@ os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_REGION", "ap-southeast-1")
 os.environ.setdefault("AWS_S3_BUCKET_INPUT", "test-bucket-input")
 os.environ.setdefault("AWS_S3_BUCKET_OUTPUT", "test-bucket-output")
-os.environ.setdefault("AWS_SQS_QUEUE_URL", "https://sqs.ap-southeast-1.amazonaws.com/000000000000/test-queue")
+os.environ.setdefault(
+    "AWS_SQS_QUEUE_URL",
+    "https://sqs.ap-southeast-1.amazonaws.com/000000000000/test-queue",
+)
 os.environ.setdefault("AWS_DYNAMODB_TABLE", "TestTable")
 
 

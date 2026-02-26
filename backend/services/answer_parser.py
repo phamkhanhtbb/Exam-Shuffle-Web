@@ -2,6 +2,7 @@
 Answer Parser Service — extracts answer maps from raw text and parsed exam structures.
 Handles MCQ, True/False, and Short Answer question types.
 """
+
 import re
 import logging
 
@@ -11,7 +12,7 @@ logger = logging.getLogger("server.answer_parser")
 def parse_answer_map_from_text(raw_text: str) -> dict[str, str]:
     """
     Parse raw editor text to extract an answer map.
-    
+
     Supports:
     - MCQ answers: lines starting with *A. or *A)
     - True/False answers: lowercase *a. or *a) (accumulates multiple)
@@ -33,7 +34,7 @@ def parse_answer_map_from_text(raw_text: str) -> dict[str, str]:
         r"^\s*(?:Đáp án|ĐÁP ÁN|Dap an)[:\.]?\s*(.+)", re.IGNORECASE
     )
 
-    for line in raw_text.split('\n'):
+    for line in raw_text.split("\n"):
         line = line.strip()
         if not line:
             continue
@@ -51,7 +52,7 @@ def parse_answer_map_from_text(raw_text: str) -> dict[str, str]:
                 current_id = None
 
         # Check for Marked Answer (MCQ/TF: *A. or *a))
-        if line.startswith('*'):
+        if line.startswith("*"):
             ans_match = ans_pattern.match(line)
             if ans_match:
                 ans_char_raw = ans_match.group(1)
@@ -62,7 +63,7 @@ def parse_answer_map_from_text(raw_text: str) -> dict[str, str]:
                 if current_id:
                     if is_true_false and current_id in answer_map:
                         existing = answer_map[current_id]
-                        if ans_char not in existing.split(','):
+                        if ans_char not in existing.split(","):
                             answer_map[current_id] = f"{existing},{ans_char}"
                     else:
                         answer_map[current_id] = ans_char
@@ -72,7 +73,7 @@ def parse_answer_map_from_text(raw_text: str) -> dict[str, str]:
                     key = str(current_q_idx)
                     if is_true_false and key in answer_map:
                         existing = answer_map[key]
-                        if ans_char not in existing.split(','):
+                        if ans_char not in existing.split(","):
                             answer_map[key] = f"{existing},{ans_char}"
                     else:
                         answer_map[key] = ans_char
@@ -112,13 +113,13 @@ def extract_answers_from_structure(structure) -> dict[int, str]:
             # Find correct option labels
             corrects = [opt.label for opt in q.options if opt.is_correct]
             if corrects:
-                if q.mode == 'true_false':
+                if q.mode == "true_false":
                     # TF: Store all correct labels (comma-separated)
-                    answer_map[global_q_idx] = ','.join(corrects)
+                    answer_map[global_q_idx] = ",".join(corrects)
                 else:
                     # MCQ: Store first correct label
                     answer_map[global_q_idx] = corrects[0]
-            elif q.correct_answer_text and q.mode == 'short':
+            elif q.correct_answer_text and q.mode == "short":
                 # Short Answer: Store the answer text
                 answer_map[global_q_idx] = q.correct_answer_text
 

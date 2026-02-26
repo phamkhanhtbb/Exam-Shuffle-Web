@@ -1,11 +1,11 @@
 """
 Background Worker for Exam Processing.
 
-This module listens for messages from an AWS SQS queue, downloads DOCX templates 
-from S3, processes them (generating multiple variants), uploads the results 
+This module listens for messages from an AWS SQS queue, downloads DOCX templates
+from S3, processes them (generating multiple variants), uploads the results
 back to S3, and updates the job status in DynamoDB.
 
-It uses Python's multiprocessing to run multiple workers in parallel, 
+It uses Python's multiprocessing to run multiple workers in parallel,
 maximizing CPU utilization for document generation.
 """
 
@@ -45,24 +45,27 @@ table = None
 # Unique identifier for this specific worker instance (Host:PID).
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 
-def _parse_sqs_body(message: Dict[str, Any]) -> Tuple[str, str, Optional[List[int]], int, Optional[dict], Optional[str]]:
+
+def _parse_sqs_body(
+    message: Dict[str, Any],
+) -> Tuple[str, str, Optional[List[int]], int, Optional[dict], Optional[str]]:
     """
     Extracts job details from the SQS message body.
     Expected fields: jobId, fileKey, numVariants, answerMap, examCodes.
     """
-    raw_body = message.get('Body')
+    raw_body = message.get("Body")
     if not raw_body:
         raise ValueError("Message body is missing")
 
     body = json.loads(raw_body)
-    job_id = body.get('jobId')
-    file_key = body.get('fileKey')
-    permutation = body.get('permutation')
-    answer_map = body.get('answerMap')
-    exam_codes = body.get('examCodes')
+    job_id = body.get("jobId")
+    file_key = body.get("fileKey")
+    permutation = body.get("permutation")
+    answer_map = body.get("answerMap")
+    exam_codes = body.get("examCodes")
 
     # Default to 1 variant if not specified.
-    num_variants = body.get('numVariants', 1)
+    num_variants = body.get("numVariants", 1)
     if not isinstance(num_variants, int) or num_variants < 1:
         num_variants = 1
 
@@ -73,41 +76,53 @@ def _parse_sqs_body(message: Dict[str, Any]) -> Tuple[str, str, Optional[List[in
 
     perm_list: Optional[List[int]] = None
     if permutation is not None:
-        if isinstance(permutation, list) and all(isinstance(x, int) for x in permutation):
+        if isinstance(permutation, list) and all(
+            isinstance(x, int) for x in permutation
+        ):
             perm_list = [int(x) for x in permutation]
 
-    return job_id.strip(), file_key.strip(), perm_list, num_variants, answer_map, exam_codes
+    return (
+        job_id.strip(),
+        file_key.strip(),
+        perm_list,
+        num_variants,
+        answer_map,
+        exam_codes,
+    )
+
 
 def _safe_output_key(job_id: str, input_file_key: str) -> str:
     """Generates a standardized S3 key for the output ZIP file."""
     return f"result_{job_id}.zip"
 
+
 def _mark_processing(job_id: str) -> bool:
     """
     Updates the job status to 'Processing' in DynamoDB.
-    Uses 'Optimistic Locking' (ConditionExpression) to ensure only 
+    Uses 'Optimistic Locking' (ConditionExpression) to ensure only
     one worker processes a specific job at a time.
     """
     try:
         table.update_item(
-            Key={'JobId': job_id},
+            Key={"JobId": job_id},
             UpdateExpression="SET #s = :processing, WorkerId = :wid, UpdatedAt = :ts",
             ConditionExpression="attribute_not_exists(#s) OR #s IN (:queued, :failed)",
-            ExpressionAttributeNames={'#s': 'Status'},
+            ExpressionAttributeNames={"#s": "Status"},
             ExpressionAttributeValues={
-                ':processing': 'Processing',
-                ':queued': 'Queued',
-                ':failed': 'Failed',
-                ':wid': WORKER_ID,
-                ':ts': int(time.time()),
+                ":processing": "Processing",
+                ":queued": "Queued",
+                ":failed": "Failed",
+                ":wid": WORKER_ID,
+                ":ts": int(time.time()),
             },
         )
         return True
     except ClientError as e:
-        code = e.response.get('Error', {}).get('Code')
-        if code == 'ConditionalCheckFailedException':
+        code = e.response.get("Error", {}).get("Code")
+        if code == "ConditionalCheckFailedException":
             return False
         raise
+
 
 def _mark_done(job_id: str, output_url: str, output_key: str) -> None:
     """
@@ -116,57 +131,69 @@ def _mark_done(job_id: str, output_url: str, output_key: str) -> None:
     """
     ttl_timestamp = int(time.time()) + 3600  # Results valid for 1 hour.
     table.update_item(
-        Key={'JobId': job_id},
+        Key={"JobId": job_id},
         UpdateExpression="SET #s = :done, OutputUrl = :url, OutputKey = :okey, UpdatedAt = :ts, ExpiresAt = :ttl",
-        ExpressionAttributeNames={'#s': 'Status'},
+        ExpressionAttributeNames={"#s": "Status"},
         ExpressionAttributeValues={
-            ':done': 'Done',
-            ':url': output_url,
-            ':okey': output_key,
-            ':ts': int(time.time()),
-            ':ttl': ttl_timestamp,
+            ":done": "Done",
+            ":url": output_url,
+            ":okey": output_key,
+            ":ts": int(time.time()),
+            ":ttl": ttl_timestamp,
         },
     )
+
 
 def _mark_failed(job_id: str, error_message: str) -> None:
     """Sets job status to 'Failed' and logs the error message."""
     msg = (error_message or "")[:800]
     try:
         table.update_item(
-            Key={'JobId': job_id},
+            Key={"JobId": job_id},
             UpdateExpression="SET #s = :failed, LastError = :err, UpdatedAt = :ts",
-            ExpressionAttributeNames={'#s': 'Status'},
+            ExpressionAttributeNames={"#s": "Status"},
             ExpressionAttributeValues={
-                ':failed': 'Failed',
-                ':err': msg,
-                ':ts': int(time.time()),
+                ":failed": "Failed",
+                ":err": msg,
+                ":ts": int(time.time()),
             },
         )
     except Exception as e:
         logger.error(f"Failed to update status to 'Failed' for job {job_id}: {e}")
 
+
 def _should_retry(exc: Exception) -> bool:
     """
-    Determines if an SQS message should be retried or discarded 
+    Determines if an SQS message should be retried or discarded
     based on the nature of the error (e.g., transient network issues vs. bad input).
     """
     if isinstance(exc, (ValueError, json.JSONDecodeError)):
-        return False # Don't retry invalid data.
+        return False  # Don't retry invalid data.
     if isinstance(exc, (BotoCoreError,)):
         return True
     if isinstance(exc, ClientError):
-        code = exc.response.get('Error', {}).get('Code', '')
-        retryable = {'ProvisionedThroughputExceededException', 'ThrottlingException', 'RequestLimitExceeded',
-                     'SlowDown', 'InternalError', 'ServiceUnavailable'}
+        code = exc.response.get("Error", {}).get("Code", "")
+        retryable = {
+            "ProvisionedThroughputExceededException",
+            "ThrottlingException",
+            "RequestLimitExceeded",
+            "SlowDown",
+            "InternalError",
+            "ServiceUnavailable",
+        }
         return code in retryable
     return True
 
-def _start_visibility_heartbeat(receipt_handle: str, stop_event: threading.Event) -> threading.Thread:
+
+def _start_visibility_heartbeat(
+    receipt_handle: str, stop_event: threading.Event
+) -> threading.Thread:
     """
     Background thread to periodically extend the SQS Visibility Timeout.
-    This prevents SQS from returning the message to the queue while 
+    This prevents SQS from returning the message to the queue while
     it is still being processed by this worker.
     """
+
     def _run() -> None:
         while not stop_event.wait(SETTINGS.heartbeat_seconds):
             try:
@@ -181,6 +208,7 @@ def _start_visibility_heartbeat(receipt_handle: str, stop_event: threading.Event
     t = threading.Thread(target=_run, name="visibility-heartbeat", daemon=True)
     t.start()
     return t
+
 
 def process_message() -> None:
     """
@@ -201,39 +229,47 @@ def process_message() -> None:
             MaxNumberOfMessages=1,
             WaitTimeSeconds=20,
             VisibilityTimeout=SETTINGS.visibility_timeout,
-            AttributeNames=['All'],
+            AttributeNames=["All"],
         )
     except Exception as e:
         logger.error(f"SQS connection error: {e}")
         time.sleep(5)
         return
 
-    if 'Messages' not in response:
+    if "Messages" not in response:
         return
 
-    message = response['Messages'][0]
-    receipt_handle = message['ReceiptHandle']
-    attrs = message.get('Attributes') or {}
-    receive_count = int(attrs.get('ApproximateReceiveCount', '1'))
+    message = response["Messages"][0]
+    receipt_handle = message["ReceiptHandle"]
+    attrs = message.get("Attributes") or {}
+    receive_count = int(attrs.get("ApproximateReceiveCount", "1"))
 
     job_id: Optional[str] = None
     started_at = time.time()
 
     try:
         # Step 1: Parse job parameters.
-        job_id, file_key, permutation, num_variants, answer_map, exam_codes = _parse_sqs_body(message)
-        logger.info(f"PROCESSING JOB: {job_id} | Variants: {num_variants} | Attempt: {receive_count}")
+        job_id, file_key, permutation, num_variants, answer_map, exam_codes = (
+            _parse_sqs_body(message)
+        )
+        logger.info(
+            f"PROCESSING JOB: {job_id} | Variants: {num_variants} | Attempt: {receive_count}"
+        )
 
         # Step 2: Check retry limits.
         if receive_count >= SETTINGS.max_attempts:
             _mark_failed(job_id, f"Exceeded max retry attempts ({receive_count}).")
-            sqs.delete_message(QueueUrl=SETTINGS.queue_url, ReceiptHandle=receipt_handle)
+            sqs.delete_message(
+                QueueUrl=SETTINGS.queue_url, ReceiptHandle=receipt_handle
+            )
             return
 
         # Step 3: Attempt to lock the job (Status transition to 'Processing').
         if not _mark_processing(job_id):
             logger.info(f"Job {job_id} already being processed or finished.")
-            sqs.delete_message(QueueUrl=SETTINGS.queue_url, ReceiptHandle=receipt_handle)
+            sqs.delete_message(
+                QueueUrl=SETTINGS.queue_url, ReceiptHandle=receipt_handle
+            )
             return
 
         # Step 4: Define a heartbeat callback to keep the SQS message alive during long tasks.
@@ -242,7 +278,7 @@ def process_message() -> None:
                 sqs.change_message_visibility(
                     QueueUrl=SETTINGS.queue_url,
                     ReceiptHandle=receipt_handle,
-                    VisibilityTimeout=SETTINGS.visibility_timeout
+                    VisibilityTimeout=SETTINGS.visibility_timeout,
                 )
             except Exception as hb_err:
                 logger.warning(f"In-process heartbeat failed: {hb_err}")
@@ -267,7 +303,7 @@ def process_message() -> None:
                 output_zip_path=local_output_path,
                 progress_callback=heartbeat_callback,
                 external_answer_map=answer_map,
-                exam_codes_str=exam_codes
+                exam_codes_str=exam_codes,
             )
 
             # Upload the resulting ZIP file to S3.
@@ -276,14 +312,14 @@ def process_message() -> None:
                 local_output_path,
                 SETTINGS.bucket_output,
                 output_key,
-                ExtraArgs={'ContentType': 'application/zip'}
+                ExtraArgs={"ContentType": "application/zip"},
             )
 
         # Step 6: Generate a presigned URL so the user can download the result directly.
         presigned_url = s3.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': SETTINGS.bucket_output, 'Key': output_key},
-            ExpiresIn=SETTINGS.presign_expires_in
+            "get_object",
+            Params={"Bucket": SETTINGS.bucket_output, "Key": output_key},
+            ExpiresIn=SETTINGS.presign_expires_in,
         )
 
         # Step 7: Finalize job and cleanup SQS.
@@ -301,9 +337,12 @@ def process_message() -> None:
         # Handle retries vs. deletion.
         if not _should_retry(e):
             logger.info(f"Non-retryable error, deleting message for job {job_id}.")
-            sqs.delete_message(QueueUrl=SETTINGS.queue_url, ReceiptHandle=receipt_handle)
+            sqs.delete_message(
+                QueueUrl=SETTINGS.queue_url, ReceiptHandle=receipt_handle
+            )
     finally:
         pass
+
 
 def run_worker_process(worker_num: int) -> None:
     """
@@ -316,14 +355,11 @@ def run_worker_process(worker_num: int) -> None:
     settings = load_settings()
 
     # Explicitly disable proxies to ensure direct AWS connectivity.
-    my_config = Config(
-        region_name=settings.region,
-        proxies={}
-    )
+    my_config = Config(region_name=settings.region, proxies={})
 
-    sqs = boto3.client('sqs', config=my_config)
-    s3 = boto3.client('s3', config=my_config)
-    dynamodb = boto3.resource('dynamodb', config=my_config)
+    sqs = boto3.client("sqs", config=my_config)
+    s3 = boto3.client("s3", config=my_config)
+    dynamodb = boto3.resource("dynamodb", config=my_config)
     table = dynamodb.Table(settings.table_name)
 
     logger.info(f"Worker Process-{worker_num} (PID: {os.getpid()}) started.")
@@ -335,6 +371,7 @@ def run_worker_process(worker_num: int) -> None:
         except Exception as e:
             logger.error(f"Worker Process-{worker_num} main loop crash: {e}")
             time.sleep(5)
+
 
 if __name__ == "__main__":
     """

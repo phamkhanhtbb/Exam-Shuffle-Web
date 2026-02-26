@@ -1,9 +1,9 @@
 """
 Configuration Management.
 
-This module handles loading environment variables from a .env file and 
-providing a structured 'Settings' object for the application. 
-It ensures that all critical cloud infrastructure details (AWS keys, bucket names) 
+This module handles loading environment variables from a .env file and
+providing a structured 'Settings' object for the application.
+It ensures that all critical cloud infrastructure details (AWS keys, bucket names)
 are present before the application starts.
 """
 
@@ -49,17 +49,17 @@ def load_settings() -> Settings:
         return int(raw) if raw else default
 
     return Settings(
-        aws_access_key_id=_require_env('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=_require_env('AWS_SECRET_ACCESS_KEY'),
-        region=_require_env('AWS_REGION'),
-        queue_url=_require_env('AWS_SQS_QUEUE_URL'),
-        table_name=_require_env('AWS_DYNAMODB_TABLE'),
-        bucket_input=_require_env('AWS_S3_BUCKET_INPUT'),
-        bucket_output=_require_env('AWS_S3_BUCKET_OUTPUT'),
-        visibility_timeout=_env_int('VISIBILITY_TIMEOUT', 120),
-        heartbeat_seconds=_env_int('HEARTBEAT_SECONDS', 30),
-        max_attempts=_env_int('MAX_ATTEMPTS', 5),
-        presign_expires_in=_env_int('PRESIGN_EXPIRES_IN', 3600),
+        aws_access_key_id=_require_env("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=_require_env("AWS_SECRET_ACCESS_KEY"),
+        region=_require_env("AWS_REGION"),
+        queue_url=_require_env("AWS_SQS_QUEUE_URL"),
+        table_name=_require_env("AWS_DYNAMODB_TABLE"),
+        bucket_input=_require_env("AWS_S3_BUCKET_INPUT"),
+        bucket_output=_require_env("AWS_S3_BUCKET_OUTPUT"),
+        visibility_timeout=_env_int("VISIBILITY_TIMEOUT", 120),
+        heartbeat_seconds=_env_int("HEARTBEAT_SECONDS", 30),
+        max_attempts=_env_int("MAX_ATTEMPTS", 5),
+        presign_expires_in=_env_int("PRESIGN_EXPIRES_IN", 3600),
     )
 
 

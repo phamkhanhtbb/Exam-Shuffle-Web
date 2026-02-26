@@ -2,6 +2,7 @@
 Preview Service — handles the full preview pipeline:
 document parsing, answer detection, structure rendering, and serialization.
 """
+
 import io
 import time
 import asyncio
@@ -18,7 +19,6 @@ from fastapi import HTTPException
 from docx_serializer import DocxSerializer
 from core import parse_exam_template
 from exceptions import (
-    ExamError,
     TableParseError,
     ParagraphParseError,
     RenderingError,
@@ -80,7 +80,9 @@ def render_structure(structure, serializer: DocxSerializer) -> str:
                     try:
                         text = render_element(el, serializer)
                     except (TableParseError, ParagraphParseError) as e:
-                        logger.warning(f"Error rendering stem element for question: {e.message}")
+                        logger.warning(
+                            f"Error rendering stem element for question: {e.message}"
+                        )
                         text = ""
                     if i == 0:
                         text = id_tag + text
@@ -96,12 +98,14 @@ def render_structure(structure, serializer: DocxSerializer) -> str:
                             if t:
                                 opt_texts.append(t)
                         except (TableParseError, ParagraphParseError) as e:
-                            logger.warning(f"Error rendering option element: {e.message}")
+                            logger.warning(
+                                f"Error rendering option element: {e.message}"
+                            )
                     if opt_texts:
                         lines.append(" ".join(opt_texts))
 
                 # Emit short answer line if available
-                if q.correct_answer_text and q.mode == 'short':
+                if q.correct_answer_text and q.mode == "short":
                     lines.append(f"Đáp án: {q.correct_answer_text}")
 
     except (TableParseError, ParagraphParseError):

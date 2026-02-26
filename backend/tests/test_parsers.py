@@ -2,7 +2,7 @@
 Unit tests for the core parser module.
 Tests hash generation, answer extraction, and basic parsing logic.
 """
-import pytest
+
 from core.parsers import _generate_content_hash
 
 

@@ -1,9 +1,8 @@
-
 import os
 import hashlib
 import logging
 import pkg_resources
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from omml_to_latex import omml_to_latex
@@ -12,6 +11,7 @@ from omml_to_latex import omml_to_latex
 logger = logging.getLogger("debug_router")
 
 router = APIRouter(prefix="/api/debug", tags=["Debug"])
+
 
 def get_file_hash(filepath):
     """Calculate MD5 hash of a file."""
@@ -23,12 +23,15 @@ def get_file_hash(filepath):
     except Exception as e:
         return f"Error: {e}"
 
+
 class OmmlRequest(BaseModel):
     xml: str
+
 
 class OmmlResponse(BaseModel):
     latex: str | None
     error: str | None = None
+
 
 @router.get("/version")
 async def get_version_info():
@@ -37,16 +40,16 @@ async def get_version_info():
         "omml_to_latex.py",
         "core/math_processor.py",
         "services/docx_serializer.py",
-        "server.py"
+        "server.py",
     ]
-    
+
     hashes = {}
-    base_dir = os.getcwd() # Should be /app or project root
+    # Should be /app or project root
     # Adjust if running from backend subdir or root
-    # server.py is usually in backend/ or root. 
+    # server.py is usually in backend/ or root.
     # Based on previous context, server.py is in backend/server.py but we might be running from root project dir.
     # Let's check relative to this file? No, assume CWD is correct or try to find them.
-    
+
     # Try current directory first
     for filename in files_to_check:
         # Check in current dir
@@ -54,22 +57,18 @@ async def get_version_info():
         if not os.path.exists(path):
             # Try prepending backend/ if we are in project root
             path = os.path.join("backend", filename)
-            
+
         hashes[filename] = get_file_hash(path)
 
-    return {
-        "files": hashes,
-        "cwd": os.getcwd()
-    }
+    return {"files": hashes, "cwd": os.getcwd()}
+
 
 @router.get("/env")
 async def get_env_info():
     """Return installed packages and versions."""
     installed_packages = {d.project_name: d.version for d in pkg_resources.working_set}
-    return {
-        "packages": installed_packages,
-        "python_version": os.sys.version
-    }
+    return {"packages": installed_packages, "python_version": os.sys.version}
+
 
 @router.post("/convert-omml", response_model=OmmlResponse)
 async def convert_omml(request: OmmlRequest):

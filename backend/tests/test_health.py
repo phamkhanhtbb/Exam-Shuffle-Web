@@ -3,10 +3,13 @@ Basic health and smoke tests for the ExamShuffling API.
 These tests verify the server starts correctly and endpoints respond.
 Requires all backend dependencies to be installed (run in CI or with venv).
 """
+
 import pytest
 
 # Skip entire module if server dependencies are missing (e.g. local dev without venv)
-pytest.importorskip("prometheus_fastapi_instrumentator", reason="Server dependencies not installed")
+pytest.importorskip(
+    "prometheus_fastapi_instrumentator", reason="Server dependencies not installed"
+)
 
 from httpx import AsyncClient, ASGITransport
 from server import app
