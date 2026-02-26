@@ -187,6 +187,7 @@ async def get_status(job_id: str):
 async def stream_job_status(job_id: str):
     async def event_generator():
         last_status = None
+        poll_interval = 0.5  # Bắt đầu quét nhanh để phản hồi ngay nếu job xong sớm
         while True:
             try:
                 item = aws.get_job_item(job_id)
@@ -214,6 +215,10 @@ async def stream_job_status(job_id: str):
                         "data": json.dumps(data),
                     }
                     last_status = current_status
+                    poll_interval = 0.5  # Reset về 0.5s khi có thay đổi trạng thái
+                else:
+                    # Giãn dần thời gian chờ nếu Queue quá lâu (tránh quá tải DB)
+                    poll_interval = min(2.5, poll_interval * 1.5)
 
                 # Terminal states: close the stream
                 if current_status in ("Done", "Failed"):
@@ -227,8 +232,7 @@ async def stream_job_status(job_id: str):
                 }
                 return
 
-            # Server-side poll interval (2 seconds)
-            await asyncio.sleep(2)
+            await asyncio.sleep(poll_interval)
 
     headers = {
         "X-Accel-Buffering": "no",
