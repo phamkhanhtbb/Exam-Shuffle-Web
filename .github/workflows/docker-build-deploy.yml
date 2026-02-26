@@ -30,38 +30,7 @@ jobs:
               - 'backend/**'
               - 'docker-compose.prod.yml'
               - '.github/workflows/**'
-            frontend:
-              - 'frontend/**'
-
-  # ============================================
-  # 1. CI FRONTEND (Chỉ chạy khi có sửa thư mục frontend)
-  # ============================================
-  frontend-ci:
-    name: ⚛️ Frontend CI
-    needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
-    steps:
-      - uses: actions/checkout@v4
-      
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript & Build Check
-        run: |
-          npm exec tsc --noEmit
-          npm run build --if-present
-        env:
-          CI: true
+              - 'nginx/**'
 
   # ============================================
   # 2. CI BACKEND (Chỉ chạy khi có sửa thư mục backend)

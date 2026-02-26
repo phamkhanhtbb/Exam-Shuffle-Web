@@ -17,6 +17,8 @@ const API_URL = isProduction
     ? 'https://api.trondeonline.me'
     : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
+export const API_BASE_URL = API_URL;
+
 const apiClient = axios.create({
     baseURL: API_URL,
     timeout: 30000, // 30 seconds default timeout

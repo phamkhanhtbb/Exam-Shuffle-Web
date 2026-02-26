@@ -3,11 +3,14 @@ ExamShuffling API — Thin Controller Layer.
 This file handles the API endpoints, middleware setup, and delegates 
 complex tasks to dedicated service modules.
 """
+import asyncio
+import json
 import logging
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sse_starlette.sse import EventSourceResponse
 
 from exceptions import ExamError
 from schemas import (
@@ -51,8 +54,10 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 # This prevents unauthorized cross-origin requests.
 origins = [
     "http://localhost:3000",        # Local development (React)
+    "http://localhost:3001",        # Local development (Next.js landing)
     "http://localhost",              # Local server
     "https://trondeonline.me",       # Production domain
+    "https://app.trondeonline.me",   # Production SPA (subdomain)
     "https://www.trondeonline.me",   # Production domain (www)
     "https://exam-shuffle-web.vercel.app", # Vercel preview deployment
 ]
@@ -66,6 +71,12 @@ app.add_middleware(
 )
 
 # -- 5. API Endpoints --
+
+# 5.0 Endpoint: Health Check
+# Lightweight endpoint for Docker healthcheck and load balancer probes.
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok"}
 
 # 5.1 Endpoint: Get S3 Presigned Upload URL
 # Step 1: User requests a link to upload their DOCX file directly to S3.
@@ -135,7 +146,7 @@ async def submit_job(request: SubmitJobRequest):
         logger.error(f"Error submitting job: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# 5.3 Endpoint: Poll Job Status
+# 5.3 Endpoint: Poll Job Status (kept for backward compatibility)
 # Step 1: Frontend repeatedly calls this to check if the job is finished.
 # Step 2: Server fetches the latest status from the database.
 @app.get("/api/status/{job_id}", response_model=JobStatusResponse)
@@ -156,6 +167,58 @@ async def get_status(job_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# 5.3b Endpoint: SSE Job Status Stream
+# Server-Sent Events endpoint that pushes status updates to the client.
+# Replaces client-side polling to reduce DynamoDB reads and bandwidth.
+@app.get("/api/status/{job_id}/stream")
+async def stream_job_status(job_id: str):
+    async def event_generator():
+        last_status = None
+        while True:
+            try:
+                item = aws.get_job_item(job_id)
+                if not item:
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({"detail": "Job not found"}),
+                    }
+                    return
+
+                current_status = item.get('Status')
+                data = {
+                    "JobId": item.get('JobId'),
+                    "Status": current_status,
+                    "OutputUrl": item.get('OutputUrl'),
+                    "CreatedAt": aws.decimal_convert(item.get('CreatedAt', 0)),
+                    "UpdatedAt": aws.decimal_convert(item.get('UpdatedAt', 0)),
+                    "LastError": item.get('LastError'),
+                }
+
+                # Only send event when status actually changes, or on first poll
+                if current_status != last_status:
+                    yield {
+                        "event": "status",
+                        "data": json.dumps(data),
+                    }
+                    last_status = current_status
+
+                # Terminal states: close the stream
+                if current_status in ("Done", "Failed"):
+                    return
+
+            except Exception as e:
+                logger.error(f"SSE stream error for job {job_id}: {e}")
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"detail": str(e)}),
+                }
+                return
+
+            # Server-side poll interval (2 seconds)
+            await asyncio.sleep(2)
+
+    return EventSourceResponse(event_generator())
 
 # 5.4 Endpoint: Instant Preview
 # Step 1: User uploads a DOCX for immediate parsing and preview (synchronous).
