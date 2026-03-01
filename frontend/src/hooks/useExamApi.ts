@@ -55,45 +55,78 @@ export const useSubmitJob = () => {
 
 /**
  * HOOK: JOB STATUS via SSE (Server-Sent Events).
- * Replaces the old polling mechanism.
  * 
  * How it works:
  * - Opens a persistent SSE connection to /api/status/{jobId}/stream.
  * - Server pushes "status" events whenever the job state changes.
  * - Server auto-closes the stream when the job reaches Done/Failed.
- * - Fallback: If SSE connection fails, falls back to a single GET request.
+ * - Reconnect: If SSE fails, retries up to 3 times with exponential backoff.
+ * - Fallback: After 3 retries, falls back to HTTP polling every 2s.
  */
 export const useJobStatus = (jobId: string | null, options?: { enabled?: boolean }) => {
     const [data, setData] = useState<JobStatusResponse | undefined>(undefined);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const retryCountRef = useRef(0);
+    const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const enabled = !!jobId && (options?.enabled ?? true);
 
-    // Cleanup function to close SSE connection
+    const MAX_SSE_RETRIES = 3;
+
+    // Cleanup all connections and timers
     const cleanup = useCallback(() => {
         if (eventSourceRef.current) {
             eventSourceRef.current.close();
             eventSourceRef.current = null;
         }
+        if (retryTimerRef.current) {
+            clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = null;
+        }
+        if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+        }
     }, []);
 
-    useEffect(() => {
-        if (!enabled || !jobId) {
-            cleanup();
-            return;
+    // Start fallback polling
+    const startPolling = useCallback((currentJobId: string) => {
+        if (pollIntervalRef.current) return; // Already polling
+        console.warn('[SSE] Max retries reached, falling back to polling (2s)');
+        pollIntervalRef.current = setInterval(async () => {
+            try {
+                const parsed = await api.getJobStatus(currentJobId);
+                setData(parsed);
+                if (parsed.Status === 'Done' || parsed.Status === 'Failed') {
+                    if (pollIntervalRef.current) {
+                        clearInterval(pollIntervalRef.current);
+                        pollIntervalRef.current = null;
+                    }
+                }
+            } catch (err) {
+                console.error('[Polling Fallback] Error:', err);
+            }
+        }, 2000);
+    }, []);
+
+    // Connect or reconnect SSE
+    const connectSSE = useCallback((currentJobId: string) => {
+        // Clean up any existing connection
+        if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
         }
 
-        // Build SSE URL
-        const sseUrl = `${API_BASE_URL}/api/status/${jobId}/stream`;
+        const sseUrl = `${API_BASE_URL}/api/status/${currentJobId}/stream`;
         const eventSource = new EventSource(sseUrl);
         eventSourceRef.current = eventSource;
 
-        // Handle "status" events from server
         eventSource.addEventListener('status', (event: MessageEvent) => {
             try {
                 const parsed: JobStatusResponse = JSON.parse(event.data);
                 setData(parsed);
+                retryCountRef.current = 0; // Reset retry count on successful data
 
-                // Close connection on terminal states
                 if (parsed.Status === 'Done' || parsed.Status === 'Failed') {
                     eventSource.close();
                     eventSourceRef.current = null;
@@ -103,35 +136,37 @@ export const useJobStatus = (jobId: string | null, options?: { enabled?: boolean
             }
         });
 
-        let pollInterval: ReturnType<typeof setInterval>;
-
-        // Handle error events from server
         eventSource.addEventListener('error', () => {
-            console.warn('[SSE] Connection error, falling back to polling');
             eventSource.close();
             eventSourceRef.current = null;
+            retryCountRef.current++;
 
-            // Fallback: Start polling instead of single GET
-            pollInterval = setInterval(async () => {
-                try {
-                    const parsed = await api.getJobStatus(jobId);
-                    setData(parsed);
-                    if (parsed.Status === 'Done' || parsed.Status === 'Failed') {
-                        clearInterval(pollInterval);
-                    }
-                } catch (err) {
-                    console.error('[Polling Fallback] Error:', err);
-                }
-            }, 3000);
+            if (retryCountRef.current <= MAX_SSE_RETRIES) {
+                // Exponential backoff: 1s, 2s, 4s
+                const delay = Math.pow(2, retryCountRef.current - 1) * 1000;
+                console.warn(`[SSE] Connection error, retry ${retryCountRef.current}/${MAX_SSE_RETRIES} in ${delay}ms`);
+                retryTimerRef.current = setTimeout(() => {
+                    connectSSE(currentJobId);
+                }, delay);
+            } else {
+                startPolling(currentJobId);
+            }
         });
+    }, [startPolling]);
+
+    useEffect(() => {
+        if (!enabled || !jobId) {
+            cleanup();
+            return;
+        }
+
+        retryCountRef.current = 0;
+        connectSSE(jobId);
 
         return () => {
             cleanup();
-            if (pollInterval) {
-                clearInterval(pollInterval);
-            }
         };
-    }, [jobId, enabled, cleanup]);
+    }, [jobId, enabled, cleanup, connectSSE]);
 
     // Reset data when jobId changes
     useEffect(() => {

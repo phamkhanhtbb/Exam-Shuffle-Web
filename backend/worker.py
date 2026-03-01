@@ -282,7 +282,7 @@ def process_message() -> None:
                 now = time.time()
                 # Cập nhật DynamoDB tiến độ thay vì chỉ kéo dài heartbeat
                 # Gọi AWS/DB max ~1.5s/lần để tránh bị block quá tải (Throttled)
-                if progress_pct == 100 or now - last_hb_time[0] >= 1.5:
+                if progress_pct == 100 or now - last_hb_time[0] >= 1.0:
                     aws.update_job_status(job_id, "Processing", num_variants=num_variants, progress=progress_pct)
                     sqs.change_message_visibility(
                         QueueUrl=SETTINGS.queue_url,

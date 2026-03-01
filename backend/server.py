@@ -7,7 +7,10 @@ complex tasks to dedicated service modules.
 import asyncio
 import json
 import logging
+from decimal import Decimal
 
+import aioboto3
+from botocore.config import Config as BotoConfig
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,15 +29,22 @@ from services.aws_service import aws
 from services.answer_parser import parse_answer_map_from_text
 from services.preview_service import process_preview
 from routers import debug_router
+from config import settings
 
 # -- 1. Logging Setup --
-# We configure logging to track events, errors, and information about
-# incoming requests and system performance.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logger = logging.getLogger("server")
+
+# -- 1.5 Async AWS Session for SSE (Non-blocking DynamoDB reads) --
+aio_session = aioboto3.Session(
+    aws_access_key_id=settings.aws_access_key_id,
+    aws_secret_access_key=settings.aws_secret_access_key,
+    region_name=settings.region,
+)
+aio_config = BotoConfig(region_name=settings.region, proxies={})
 
 # -- 2. FastAPI Application Initialization --
 # Initialize the main FastAPI application with metadata.
@@ -181,62 +191,93 @@ async def get_status(job_id: str):
 
 
 # 5.3b Endpoint: SSE Job Status Stream
-# Server-Sent Events endpoint that pushes status updates to the client.
-# Replaces client-side polling to reduce DynamoDB reads and bandwidth.
+# Uses native async aioboto3 for non-blocking DynamoDB reads.
+# Status-aware polling: fixed 1s for Processing, adaptive 1→3s for Queued.
+# Max connection duration: 10 minutes.
+MAX_SSE_DURATION = 600  # 10 minutes
+
+
+def _decimal_convert(obj):
+    """Convert DynamoDB Decimal types to int/float (local helper)."""
+    if isinstance(obj, Decimal):
+        return int(obj) if obj % 1 == 0 else float(obj)
+    return obj
+
+
 @app.get("/api/status/{job_id}/stream")
 async def stream_job_status(job_id: str):
     async def event_generator():
         last_status = None
         last_progress = None
-        poll_interval = 0.5  # Bắt đầu quét nhanh để phản hồi ngay nếu job xong sớm
-        while True:
-            try:
-                item = aws.get_job_item(job_id)
-                if not item:
+        poll_interval = 0.5  # Start fast for quick initial response
+        start_time = asyncio.get_event_loop().time()
+
+        async with aio_session.resource("dynamodb", config=aio_config) as dynamo:
+            table = await dynamo.Table(settings.table_name)
+
+            while (asyncio.get_event_loop().time() - start_time) < MAX_SSE_DURATION:
+                try:
+                    # Non-blocking async DynamoDB read (aioboto3)
+                    resp = await table.get_item(Key={"JobId": job_id})
+                    item = resp.get("Item")
+                    if not item:
+                        yield {
+                            "event": "error",
+                            "data": json.dumps({"detail": "Job not found"}),
+                        }
+                        return
+
+                    current_status = item.get("Status")
+                    current_progress = _decimal_convert(item.get("JobProgress", 0))
+                    data = {
+                        "JobId": item.get("JobId"),
+                        "Status": current_status,
+                        "JobProgress": current_progress,
+                        "OutputUrl": item.get("OutputUrl"),
+                        "CreatedAt": _decimal_convert(item.get("CreatedAt", 0)),
+                        "UpdatedAt": _decimal_convert(item.get("UpdatedAt", 0)),
+                        "LastError": item.get("LastError"),
+                    }
+
+                    # Only emit event when status or progress actually changes
+                    if current_status != last_status or current_progress != last_progress:
+                        yield {
+                            "event": "status",
+                            "data": json.dumps(data),
+                        }
+                        last_status = current_status
+                        last_progress = current_progress
+                        poll_interval = 0.5  # Reset on change
+                    else:
+                        # Status-aware interval adjustment
+                        if current_status == "Processing":
+                            # During processing: fixed 1s (progress changes frequently)
+                            poll_interval = 1.0
+                        elif current_status == "Queued":
+                            # While queued: adaptive backoff 1s → 3s (waiting for worker)
+                            poll_interval = min(3.0, poll_interval * 1.3)
+                        else:
+                            poll_interval = 1.0
+
+                    # Terminal states: close the stream
+                    if current_status in ("Done", "Failed"):
+                        return
+
+                except Exception as e:
+                    logger.error(f"SSE stream error for job {job_id}: {e}")
                     yield {
                         "event": "error",
-                        "data": json.dumps({"detail": "Job not found"}),
+                        "data": json.dumps({"detail": str(e)}),
                     }
                     return
 
-                current_status = item.get("Status")
-                current_progress = aws.decimal_convert(item.get("JobProgress", 0))
-                data = {
-                    "JobId": item.get("JobId"),
-                    "Status": current_status,
-                    "JobProgress": current_progress,
-                    "OutputUrl": item.get("OutputUrl"),
-                    "CreatedAt": aws.decimal_convert(item.get("CreatedAt", 0)),
-                    "UpdatedAt": aws.decimal_convert(item.get("UpdatedAt", 0)),
-                    "LastError": item.get("LastError"),
-                }
+                await asyncio.sleep(poll_interval)
 
-                # Only send event when status or progress actually changes, or on first poll
-                if current_status != last_status or current_progress != last_progress:
-                    yield {
-                        "event": "status",
-                        "data": json.dumps(data),
-                    }
-                    last_status = current_status
-                    last_progress = current_progress
-                    poll_interval = 0.5  # Reset về 0.5s khi có thay đổi trạng thái
-                else:
-                    # Giãn dần thời gian chờ nếu Queue quá lâu (tránh quá tải DB)
-                    poll_interval = min(2.5, poll_interval * 1.5)
-
-                # Terminal states: close the stream
-                if current_status in ("Done", "Failed"):
-                    return
-
-            except Exception as e:
-                logger.error(f"SSE stream error for job {job_id}: {e}")
-                yield {
-                    "event": "error",
-                    "data": json.dumps({"detail": str(e)}),
-                }
-                return
-
-            await asyncio.sleep(poll_interval)
+        # SSE timeout reached
+        yield {
+            "event": "error",
+            "data": json.dumps({"detail": "SSE stream timeout (10 min)"}),
+        }
 
     headers = {
         "X-Accel-Buffering": "no",
