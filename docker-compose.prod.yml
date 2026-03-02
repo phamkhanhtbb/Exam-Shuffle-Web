@@ -80,6 +80,10 @@ services:
       - '--storage.tsdb.retention.time=30d'
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   grafana:
     image: grafana/grafana:latest
@@ -99,18 +103,10 @@ services:
       - prometheus
     networks:
       - app-network
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    container_name: exam-cadvisor
-    restart: always
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    networks:
-      - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   node-exporter:
     image: prom/node-exporter:latest
@@ -126,6 +122,10 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
 networks:
   app-network:
