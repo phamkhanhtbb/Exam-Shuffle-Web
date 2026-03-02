@@ -116,6 +116,8 @@ def process_exam_batch(
             }
 
             completed = 0
+            HEARTBEAT_INTERVAL = 1.0  # seconds
+            last_heartbeat_time = time.time()
             for future in as_completed(future_to_code):
                 exam_code = future_to_code[future]
                 try:
