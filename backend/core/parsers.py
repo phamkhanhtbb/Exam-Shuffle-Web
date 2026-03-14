@@ -24,7 +24,7 @@ from .utils import (
     _slice_paragraph_runs,
     OBJ_CHAR,
 )
-from backend.exceptions import EmptyQuestionError
+from exceptions import EmptyQuestionError
 
 # Note: _split_inline_options_smart logic was partly in utils and partly inline in original file.
 # I will implement _split_inline_options_smart fully here or rely on utils.
