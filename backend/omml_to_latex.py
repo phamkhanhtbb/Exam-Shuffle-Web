@@ -469,29 +469,36 @@ ACCENT_MAP = {
     "⃑": r"\overrightarrow",  # U+20D1 COMBINING RIGHT ARROW
     }
 
-DELIM_MAP = {
+BEGIN_DELIM_MAP = {
     "(": r"\left(",
-    ")": r"\right)",
     "[": r"\left[",
-    "]": r"\right]",
     "{": r"\left\{",
-    "}": r"\right\}",
     "|": r"\left|",
     "‖": r"\left\|",  # U+2016 DOUBLE VERTICAL LINE
     "∥": r"\left\|",  # U+2225 PARALLEL TO (as double bar)
     "⌈": r"\left\lceil",
-    "⌉": r"\right\rceil",
     "⌊": r"\left\lfloor",
-    "⌋": r"\right\rfloor",
     "〈": r"\left\langle",  # U+3008 CJK
-    "〉": r"\right\rangle",  # U+3009 CJK
     "⟨": r"\left\langle",  # U+27E8 MATHEMATICAL
-    "⟩": r"\right\rangle",  # U+27E9 MATHEMATICAL
     "⟪": r"\left\langle\langle",  # U+27EA DOUBLE ANGLE
-    "⟫": r"\right\rangle\rangle",  # U+27EB DOUBLE ANGLE
     "⟦": r"\left[\![",  # U+27E6 DOUBLE BRACKET
-    "⟧": r"\right]\!]",  # U+27E7 DOUBLE BRACKET
     "⦃": r"\left\{",  # U+2983 LEFT CURLY BRACKET
+    "": "",
+}
+
+END_DELIM_MAP = {
+    ")": r"\right)",
+    "]": r"\right]",
+    "}": r"\right\}",
+    "|": r"\right|",
+    "‖": r"\right\|",  # U+2016 DOUBLE VERTICAL LINE
+    "∥": r"\right\|",  # U+2225 PARALLEL TO (as double bar)
+    "⌉": r"\right\rceil",
+    "⌋": r"\right\rfloor",
+    "〉": r"\right\rangle",  # U+3009 CJK
+    "⟩": r"\right\rangle",  # U+27E9 MATHEMATICAL
+    "⟫": r"\right\rangle\rangle",  # U+27EB DOUBLE ANGLE
+    "⟧": r"\right]\!]",  # U+27E7 DOUBLE BRACKET
     "⦄": r"\right\}",  # U+2984 RIGHT CURLY BRACKET
     "": "",
 }
@@ -841,8 +848,8 @@ def _convert_delimiter(element) -> str:
 
 
 
-    left = DELIM_MAP.get(beg_chr, r"\left" + beg_chr)
-    right = DELIM_MAP.get(end_chr, r"\right" + end_chr)
+    left = BEGIN_DELIM_MAP.get(beg_chr, r"\left" + beg_chr)
+    right = END_DELIM_MAP.get(end_chr, r"\right" + end_chr)
 
     content_parts = []
     for child in element:

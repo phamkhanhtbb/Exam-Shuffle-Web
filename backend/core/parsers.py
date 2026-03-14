@@ -24,7 +24,7 @@ from .utils import (
     _slice_paragraph_runs,
     OBJ_CHAR,
 )
-from exceptions import EmptyQuestionError
+from backend.exceptions import EmptyQuestionError
 
 # Note: _split_inline_options_smart logic was partly in utils and partly inline in original file.
 # I will implement _split_inline_options_smart fully here or rely on utils.
@@ -52,7 +52,8 @@ def _split_inline_options_smart(
 
     pre_element = None
     # Check for content BEFORE the first option
-    first_start = matches[0].start()
+    # FIX: Use start of asterisk or label to not consume separator (space or \uFFFC)
+    first_start = matches[0].start(1) if matches[0].group(1) else matches[0].start(2)
     if first_start > 0:
         # Check if it's just whitespace?
         # Even if it's whitespace, usually we might want to keep it or ignore it.
@@ -68,10 +69,15 @@ def _split_inline_options_smart(
         label = match.group(2).upper()
         asterisk_after = match.group(3) if match.lastindex >= 3 else ""
 
-        # Start index of the whole match
-        start_idx = match.start()
+        # Start index of the whole option, ignoring the preceding separator match
+        start_idx = match.start(1) if match.group(1) else match.start(2)
+        
         # End index is start of next match or end of text
-        end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        if i + 1 < len(matches):
+            next_m = matches[i + 1]
+            end_idx = next_m.start(1) if next_m.group(1) else next_m.start(2)
+        else:
+            end_idx = len(full_text)
 
         rich_element = _slice_paragraph_runs(paragraph, start_idx, end_idx)
 

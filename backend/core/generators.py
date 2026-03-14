@@ -8,7 +8,8 @@ from docx.oxml import OxmlElement, ns
 from docx.oxml.text.paragraph import CT_P
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
-from docx.shared import Cm
+from docx.shared import Cm, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from .constants import OPTION_START_PATTERN, SUB_OPTION_PATTERN
 from .models import OptionBlock, QuestionBlock, ExamStructure
@@ -152,16 +153,98 @@ _fast_copy_option = _selective_copy_option
 
 def _build_exam_header(body, sect_pr, header_elements, exam_code):
     """Clone header elements and replace exam code."""
+    state = {'pending': False, 'fallback_p': None}
     for el in header_elements:
         clone = _fast_copy_element(el)  # OPTIMIZED: lxml copy instead of deepcopy
-        _recursive_replace_code(clone, exam_code)
+        _recursive_replace_code(clone, exam_code, state)
         _append_element(body, sect_pr, clone)
+    
+    if state.get('pending') and state.get('fallback_p') is not None:
+        try:
+            state['fallback_p'].add_run(f" {exam_code}")
+        except Exception:
+            pass
 
 
 def _build_exam_footer(body, sect_pr, footer_elements):
     """Clone footer elements."""
     for el in footer_elements:
         _append_element(body, sect_pr, _fast_copy_element(el))  # OPTIMIZED
+
+
+def _add_page_footer(doc: Document, exam_code: str):
+    """Adds a page number footer with exam code to every section."""
+    for section in doc.sections:
+        footer = section.footer
+        
+        # Get or create the first paragraph in footer
+        if not footer.paragraphs:
+            p = footer.add_paragraph()
+        else:
+            p = footer.paragraphs[0]
+            p.clear()
+            
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        
+        # Helper to set font
+        def _set_font(r):
+            if r.font:
+                r.font.name = 'Times New Roman'
+                r.font.size = Pt(11)
+                
+        # Add "Trang "
+        r_prefix = p.add_run('Trang ')
+        _set_font(r_prefix)
+        
+        # Add PAGE field
+        f1 = OxmlElement('w:fldChar')
+        f1.set(ns.qn('w:fldCharType'), 'begin')
+        t1 = OxmlElement('w:instrText')
+        t1.set(ns.qn('xml:space'), 'preserve')
+        t1.text = 'PAGE'
+        f2 = OxmlElement('w:fldChar')
+        f2.set(ns.qn('w:fldCharType'), 'separate')
+        t2 = OxmlElement('w:t')
+        t2.text = '1'
+        f3 = OxmlElement('w:fldChar')
+        f3.set(ns.qn('w:fldCharType'), 'end')
+        
+        r_page = p.add_run()
+        r_page._r.append(f1)
+        r_page._r.append(t1)
+        r_page._r.append(f2)
+        r_page._r.append(t2)
+        r_page._r.append(f3)
+        _set_font(r_page)
+        
+        # Add " / "
+        r_sep = p.add_run(' / ')
+        _set_font(r_sep)
+        
+        # Add NUMPAGES field
+        f4 = OxmlElement('w:fldChar')
+        f4.set(ns.qn('w:fldCharType'), 'begin')
+        t3 = OxmlElement('w:instrText')
+        t3.set(ns.qn('xml:space'), 'preserve')
+        t3.text = 'NUMPAGES'
+        f5 = OxmlElement('w:fldChar')
+        f5.set(ns.qn('w:fldCharType'), 'separate')
+        t4 = OxmlElement('w:t')
+        t4.text = '1'
+        f6 = OxmlElement('w:fldChar')
+        f6.set(ns.qn('w:fldCharType'), 'end')
+        
+        r_numpages = p.add_run()
+        r_numpages._r.append(f4)
+        r_numpages._r.append(t3)
+        r_numpages._r.append(f5)
+        r_numpages._r.append(t4)
+        r_numpages._r.append(f6)
+        _set_font(r_numpages)
+        
+        # Add " - Mã đề thi ZZZZ"
+        r_suffix = p.add_run(f' - Mã đề thi {exam_code}')
+        _set_font(r_suffix)
 
 
 def _format_option_block(opt: OptionBlock, new_lbl: str, pattern: re.Pattern):
@@ -596,6 +679,9 @@ def generate_variant_from_structure(
     _build_exam_footer(body, sect_pr, structure.footer_elements)
     t5 = time.perf_counter()
     timings["build_footer"] = (t5 - t4) * 1000
+
+    # 4. Page Footer (Section Footer) calculation
+    _add_page_footer(target, exam_code)
 
     # Save
     buf = io.BytesIO()

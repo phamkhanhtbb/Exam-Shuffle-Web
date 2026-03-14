@@ -259,30 +259,55 @@ def _clean_marker_only(paragraph: Paragraph):
                 rPr.remove(child)
 
 
-def _recursive_replace_code(element, new_code: str):
+def _recursive_replace_code(element, new_code: str, state=None):
+    if state is None:
+        state = {'pending': False, 'fallback_p': None}
+        
     if isinstance(element, CT_P):
         p = Paragraph(element, None)
-        text = p.text
-        if "Mã đề" in text or "MÃ ĐỀ" in text:
-            num_match = re.search(r"\d+", text)
+        text = p.text.strip()
+        
+        # 1. State matching for pending code
+        if state.get('pending'):
+            num_match = re.search(r'\d+', text)
             if num_match:
                 old_num = num_match.group(0)
+                replaced = False
+                for run in p.runs:
+                    if old_num in (run.text or ''):
+                        run.text = run.text.replace(old_num, new_code)
+                        replaced = True
+                        break
+                state['pending'] = False
+                return
+        
+        # 2. Look for 'Mã đề'
+        if "Mã đề" in text or "MÃ ĐỀ" in text or "mã đề" in text.lower():
+            num_match = re.search(r'\d+', text)
+            if num_match:
+                old_num = num_match.group(0)
+                replaced = False
                 # Safe run-level replacement (preserves OLE/embedded content)
                 for run in p.runs:
                     if old_num in (run.text or ""):
                         run.text = run.text.replace(old_num, new_code)
+                        replaced = True
                         break
-                else:
-                    # Fallback: no run matched, add new run
+                if not replaced:
+                    # Fallback: no run matched exactly, add new run
                     p.add_run(f" {new_code}")
+                state['pending'] = False
             else:
-                p.add_run(f" {new_code}")
+                # Store state to continue looking in next blocks
+                state['pending'] = True
+                state['fallback_p'] = p
+                
     elif isinstance(element, CT_Tbl):
         table = Table(element, None)
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
-                    _recursive_replace_code(p._element, new_code)
+                    _recursive_replace_code(p._element, new_code, state)
 
 
 # --- SMART DETECTION UTILS ---

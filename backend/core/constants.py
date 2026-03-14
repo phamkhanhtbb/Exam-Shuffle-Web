@@ -21,11 +21,11 @@ QUESTION_PATTERN = re.compile(
 # Fixed: Remove \s* between asterisk and letter to match *A. format directly
 # Capturing group 1: Optional asterisk BEFORE, Group 2: Letter, Group 3: Optional asterisk AFTER
 # This ensures we catch both *A. and A.* formats.
-OPTION_START_PATTERN = re.compile(r"^\s*(\*?)([A-H])\s*[\.\)]\s*(\*?)")
+OPTION_START_PATTERN = re.compile(r"^\s*(\*?)([A-D])\s*[\.\)]\s*(\*?)")
 # Improved: Capture asterisk before OR after the letter (for *A. and A.* formats)
 # Group 1: Asterisk before, Group 2: Letter, Group 3: Asterisk after
 # FIX: Allow \uFFFC (Object Replacement Char) as separator for cases like "Equation \uFFFCB."
-INLINE_OPTION_PATTERN = re.compile(r"(?:^|(?<![0-9])[\s\uFFFC])(\*?)([A-H])[\.\)](\*?)")
+INLINE_OPTION_PATTERN = re.compile(r"(?:^|(?<![0-9])[\s\uFFFC])(\*?)([A-D])[\.\)](\*?)")
 # Fix: Limit sub-options to a-d (standard) and ONLY ')' as requested.
 # Group 1: Optional asterisk BEFORE, Group 2: letter, Group 3: Optional asterisk AFTER
 SUB_OPTION_PATTERN = re.compile(r"^\s*(\*?)([a-d])\s*\)\s*(\*?)")

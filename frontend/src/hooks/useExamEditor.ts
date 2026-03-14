@@ -162,7 +162,7 @@ export function useExamEditor(): ExamEditorActions {
                 // STEP 1: Clear existing selection marker (*) from all options A-H.
                 const newLines = [...lines];
                 for (let j = startIdx; j < endIdx; j++) {
-                    newLines[j] = newLines[j].replace(/(\*)([A-H])([.\\)])/g, '$2$3');
+                    newLines[j] = newLines[j].replace(/(\*)([A-D])([.\\)])/g, '$2$3');
                 }
 
                 // STEP 2: Inject the asterisk (*) for the newly selected option.

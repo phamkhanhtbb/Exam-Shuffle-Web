@@ -129,19 +129,19 @@ const parseTableRow = (line: string): string[] => {
 const hasUppercaseAnswerPattern = (line: string): boolean => {
   const trimmed = line.trim();
   // eslint-disable-next-line no-useless-escape
-  const regex = /(\*?)([A-H])[.\)]/g;
+  const regex = /(\*?)([A-D])[.\)]/g;
   let match;
   while ((match = regex.exec(trimmed)) !== null) {
     const letterIndex = match.index + match[1].length;
     const charBefore = letterIndex > 0 ? trimmed[letterIndex - 1] : '';
-    if (charBefore === ']' || charBefore === ':' || /\d/.test(charBefore)) continue;
+    if (charBefore === ':' || /\d/.test(charBefore)) continue;
     // FIX: Only skip if digit is IMMEDIATELY before space (e.g., "2,5 A."), 
     // but allow other chars before space (e.g., "đặc. B." is valid)
     if (/\s/.test(charBefore)) {
       const charBeforeSpace = letterIndex > 1 ? trimmed[letterIndex - 2] : '';
       if (/[0-9]/.test(charBeforeSpace)) continue;  // Only skip for digits, not dots/commas
     }
-    if (charBefore === '' || /\s/.test(charBefore) || charBefore === '*') return true;
+    if (charBefore === '' || /\s/.test(charBefore) || charBefore === '*' || charBefore === ']') return true;
   }
   return false;
 };
@@ -150,7 +150,7 @@ const hasLowercaseAnswerPattern = (line: string): boolean => {
   const trimmed = line.trim();
   // eslint-disable-next-line no-useless-escape
   // PART 2 STRICT: Only a-d and ')'
-  return /(?:^|\s)(\*?)[a-d]\)\s*\S/.test(trimmed);
+  return /(?:^|\s|\])(\*?)[a-d]\)\s*\S/.test(trimmed);
 };
 
 const extractUppercaseAnswers = (line: string): { letter: string; content: string; isMarkedCorrect: boolean }[] => {
@@ -158,19 +158,19 @@ const extractUppercaseAnswers = (line: string): { letter: string; content: strin
   const trimmedLine = line.trim();
   const markers: { index: number; letter: string; isMarkedCorrect: boolean; markerLength: number }[] = [];
   // eslint-disable-next-line no-useless-escape
-  const regex = /(\*?)([A-H])[.\)]\s*/g;
+  const regex = /(\*?)([A-D])[.\)]\s*/g;
   let match;
   while ((match = regex.exec(trimmedLine)) !== null) {
     const letterIndex = match.index + match[1].length;
     const charBefore = letterIndex > 0 ? trimmedLine[letterIndex - 1] : '';
-    if (charBefore === ']' || charBefore === ':' || /\d/.test(charBefore)) continue;
+    if (charBefore === ':' || /\d/.test(charBefore)) continue;
     // FIX: Only skip if digit is IMMEDIATELY before space (e.g., "2,5 A."), 
     // but allow other chars before space (e.g., "đặc. B." is valid)
     if (/\s/.test(charBefore)) {
       const charBeforeSpace = letterIndex > 1 ? trimmedLine[letterIndex - 2] : '';
       if (/[0-9]/.test(charBeforeSpace)) continue;  // Only skip for digits, not dots/commas
     }
-    if (charBefore === '' || /\s/.test(charBefore) || charBefore === '*') {
+    if (charBefore === '' || /\s/.test(charBefore) || charBefore === '*' || charBefore === ']') {
       markers.push({
         index: match.index,
         letter: match[2].toUpperCase(),
